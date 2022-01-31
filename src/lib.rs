@@ -44,21 +44,22 @@ pub struct Watch {
     /// Paths, relative to the workspace root, that will be excluded.
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
-    /// Set the debounce duration after relaunching a command.
+    /// Throttle events to prevent the command to be re-executed too early
+    /// right after an execution already occurred.
     ///
     /// The default is 2 seconds.
-    #[clap(skip)]
-    pub debounce: Option<Duration>,
+    #[clap(skip = Duration::from_secs(2))]
+    pub debounce: Duration,
 }
 
 impl Watch {
-    /// Adds a path that will be monitored by the watch process.
+    /// Add a path to watch for changes.
     pub fn watch_path(mut self, path: impl AsRef<Path>) -> Self {
         self.watch_paths.push(path.as_ref().to_path_buf());
         self
     }
 
-    /// Adds multiple paths that will be monitored by the watch process.
+    /// Add multiple paths to watch for changes.
     pub fn watch_paths(mut self, paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
         for path in paths {
             self.watch_paths.push(path.as_ref().to_path_buf())
@@ -66,13 +67,13 @@ impl Watch {
         self
     }
 
-    /// Adds a path that will not be monitored by the watch process.
+    /// Add a path that will be ignored if changes are detected.
     pub fn exclude_path(mut self, path: impl AsRef<Path>) -> Self {
         self.exclude_paths.push(path.as_ref().to_path_buf());
         self
     }
 
-    /// Adds multiple paths that will not be monitored by the watch process.
+    /// Add multiple paths that will be ignored if changes are detected.
     pub fn exclude_paths(mut self, paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Self {
         for path in paths {
             self.exclude_paths.push(path.as_ref().to_path_buf());
@@ -80,16 +81,16 @@ impl Watch {
         self
     }
 
-    /// Adds a path, relative to the workspace, that will not be monitored by
-    /// the watch process.
+    /// Add a path, relative to the workspace, that will be ignored if changes
+    /// are detected.
     pub fn exclude_workspace_path(mut self, path: impl AsRef<Path>) -> Self {
         self.workspace_exclude_paths
             .push(path.as_ref().to_path_buf());
         self
     }
 
-    /// Adds multiple paths, relative to the workspace, that will not be
-    /// monitored by the watch process.
+    /// Add multiple paths, relative to the workspace, that will be ignored if
+    /// changes are detected.
     pub fn exclude_workspace_paths(
         mut self,
         paths: impl IntoIterator<Item = impl AsRef<Path>>,
@@ -101,9 +102,9 @@ impl Watch {
         self
     }
 
-    /// Set the debounce duration after relaunching the command
+    /// Set the debounce duration after relaunching the command.
     pub fn debounce(mut self, duration: Duration) -> Self {
-        self.debounce = Some(duration);
+        self.debounce = duration;
         self
     }
 
@@ -149,7 +150,7 @@ impl Watch {
         }
     }
 
-    /// Run the given `command`, monitoring the watched paths and relaunch the
+    /// Run the given `command`, monitor the watched paths and relaunch the
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
@@ -183,9 +184,7 @@ impl Watch {
                 Ok(notify::RawEvent {
                     path: Some(path), ..
                 }) if !watch.is_excluded_path(&path) && !watch.is_hidden_path(&path) => {
-                    if command_start.elapsed()
-                        >= watch.debounce.unwrap_or_else(|| Duration::from_secs(2))
-                    {
+                    if command_start.elapsed() >= watch.debounce {
                         log::trace!("Detected changes at {}", path.display());
                         #[cfg(unix)]
                         {
@@ -236,7 +235,7 @@ mod test {
     #[test]
     fn exclude_relative_path() {
         let watch = Watch {
-            debounce: None,
+            debounce: Default::default(),
             watch_paths: Vec::new(),
             exclude_paths: Vec::new(),
             workspace_exclude_paths: vec![PathBuf::from("src/watch.rs")],
