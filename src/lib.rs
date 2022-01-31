@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use lazy_static::lazy_static;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     path::{Path, PathBuf},
@@ -8,44 +9,29 @@ use std::{
     time::{Duration, Instant},
 };
 
+pub use anyhow;
+pub use cargo_metadata;
+pub use cargo_metadata::camino;
+pub use clap;
 
+/// Fetch the metadata of the crate.
+pub fn metadata() -> &'static cargo_metadata::Metadata {
+    lazy_static! {
+        static ref METADATA: cargo_metadata::Metadata = cargo_metadata::MetadataCommand::new()
+            .exec()
+            .expect("cannot get crate's metadata");
+    }
+
+    &METADATA
+}
+
+/// Fetch information of a package in the current crate.
+pub fn package(name: &str) -> Option<&cargo_metadata::Package> {
+    metadata().packages.iter().find(|x| x.name == name)
+}
 
 /// Watches over your project's source code, relaunching the given command when
 /// changes are detected.
-///
-/// # Usage
-///
-/// ```rust,no_run
-/// use std::process;
-/// use xtask_wasm::{anyhow::Result, clap};
-///
-/// #[derive(clap::Parser)]
-/// enum Opt {
-///     Watch(xtask_wasm::Watch),
-/// }
-///
-/// fn main() -> Result<()> {
-///     let opt: Opt = clap::Parser::parse();
-///
-///     match opt {
-///         Opt::Watch(watch) => {
-///             let mut command = process::Command::new("cargo");
-///             command.args(["xtask", "dist"]);
-///
-///             log::info!("Starting to watch");
-///             watch.exclude_workspace_path("dist").run(command)?;
-///         }
-///     }
-///
-///     Ok(())
-/// }
-/// ```
-///
-/// Add a `watch` subcommand that will run `cargo xtask dist`, monitoring for
-/// changes in the workspace (expect for hidden files, workspace's target
-/// directory and the generated dist directory). If a valid change is detected
-/// the `cargo xtask dist` command will be relaunched with a debounce of 2
-/// seconds to avoid relaunching recursively on multiple files for example.
 #[non_exhaustive]
 #[derive(Debug, Parser)]
 pub struct Watch {
@@ -59,7 +45,8 @@ pub struct Watch {
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
     /// Set the debounce duration after relaunching a command.
-    /// The default is 2 seconds
+    ///
+    /// The default is 2 seconds.
     #[clap(skip)]
     pub debounce: Option<Duration>,
 }
