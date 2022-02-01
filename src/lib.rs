@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     path::{Path, PathBuf},
-    process,
+    process::Command,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -154,7 +154,7 @@ impl Watch {
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(self, mut command: process::Command) -> Result<()> {
+    pub fn run(self, mut command: Command) -> Result<()> {
         let metadata = metadata();
         let watch = self.exclude_path(&metadata.target_directory);
 

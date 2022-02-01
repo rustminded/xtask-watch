@@ -1,4 +1,4 @@
-use std::process;
+use std::process::Command;
 use xtask_watch::{
     anyhow::{ensure, Context, Result},
     clap,
@@ -6,7 +6,6 @@ use xtask_watch::{
 
 #[derive(clap::Parser)]
 enum Opt {
-    Build,
     Watch(xtask_watch::Watch),
 }
 
@@ -17,27 +16,13 @@ fn main() -> Result<()> {
         .filter(Some("xtask"), log::LevelFilter::Trace)
         .init();
 
-    let mut run_command = process::Command::new("cargo");
-    run_command.args(["run", "--package", "project"]);
+    let mut run_command = Command::new("cargo");
+    run_command.arg("check");
 
     match opt {
-        Opt::Build => {
-            log::info!("running `project`");
-            ensure!(
-                run_command
-                    .status()
-                    .context("could not start cargo")?
-                    .success(),
-                "run command failed"
-            );
-        }
         Opt::Watch(watch) => {
             log::info!("starting to watch `project`");
-            let debounce = std::time::Duration::from_secs(0);
-            watch
-                .exclude_workspace_path("project/config.toml")
-                .debounce(debounce)
-                .run(run_command)?;
+            watch.run(run_command)?;
         }
     }
 
