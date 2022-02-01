@@ -1,0 +1,6 @@
+[workspace]
+default-members = ["project"]
+members = [
+    "my-project",
+    "xtask",
+]

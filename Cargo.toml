@@ -13,3 +13,14 @@ include = ["src/**/*.rs", "README.md", "LICENSE.Apache-2.0", "LICENSE.MIT"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.52"
+cargo_metadata = "0.14.1"
+clap =  { version = "3.0.10", features = ["derive"] }
+lazy_static = "1.4.0"
+log = "0.4.14"
+notify = "4.0.17"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.112"
+
+[workspace]
