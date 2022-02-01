@@ -33,7 +33,11 @@ fn main() -> Result<()> {
         }
         Opt::Watch(watch) => {
             log::info!("starting to watch `project`");
-            watch.run(run_command)?;
+            let debounce = std::time::Duration::from_secs(0);
+            watch
+                .exclude_workspace_path("project/config.toml")
+                .debounce(debounce)
+                .run(run_command)?;
         }
     }
 
