@@ -33,9 +33,19 @@
 //!     move all the content of the project expect the `.git` directory into a
 //!     new directory named after the package name at the root of the project.
 //!     * Creates a new package for xtasks using the following:
-//!     ```console
-//!     cargo new xtask
-//!     ```
+//!         ```console
+//!         cargo new xtask
+//!         ```
+//!     * Create a new Cargo.toml at the root of the project and add the
+//!         following:
+//!         ```console
+//!         [workspace]
+//!         members = [
+//!             "my-project",
+//!             "xtask",
+//!         ]
+//!         ```
+//!
 
 #![deny(missing_docs)]
 
