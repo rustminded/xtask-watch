@@ -13,7 +13,8 @@ fn main() -> Result<()> {
     let opt: Opt = clap::Parser::parse();
 
     env_logger::builder()
-        .filter(Some("xtask"), log::LevelFilter::Trace)
+    .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
         .init();
 
     let mut run_command = Command::new("cargo");
