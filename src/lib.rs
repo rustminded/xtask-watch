@@ -1,3 +1,8 @@
+//! This crate provides a `Watch` that launch a given command, re-launching this
+//! command when changes are detected in your source code.
+
+#![deny(missing_docs)]
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
@@ -182,46 +187,49 @@ impl Watch {
         loop {
             match rx.recv() {
                 Ok(notify::RawEvent {
-                    path: Some(path), ..
-                }) if !watch.is_excluded_path(&path) && !watch.is_hidden_path(&path) => {
-                    if command_start.elapsed() >= watch.debounce {
-                        log::trace!("Detected changes at {}", path.display());
-                        #[cfg(unix)]
-                        {
-                            let now = Instant::now();
+                    path: Some(path),
+                    op: Ok(op),
+                    ..
+                }) if !watch.is_excluded_path(&path)
+                    && !watch.is_hidden_path(&path)
+                    && path.exists()
+                    && op != notify::Op::CREATE
+                    && command_start.elapsed() >= watch.debounce =>
+                {
+                    log::trace!("Detected changes at {}", path.display());
+                    #[cfg(unix)]
+                    {
+                        let now = Instant::now();
 
-                            unsafe {
-                                log::trace!("Killing watch's command process");
-                                libc::kill(
-                                    child.id().try_into().expect("cannot get process id"),
-                                    libc::SIGTERM,
-                                );
-                            }
-
-                            while now.elapsed().as_secs() < 2 {
-                                std::thread::sleep(Duration::from_millis(200));
-                                if let Ok(Some(_)) = child.try_wait() {
-                                    break;
-                                }
-                            }
+                        unsafe {
+                            log::trace!("Killing watch's command process");
+                            libc::kill(
+                                child.id().try_into().expect("cannot get process id"),
+                                libc::SIGTERM,
+                            );
                         }
 
-                        match child.try_wait() {
-                            Ok(Some(_)) => {}
-                            _ => {
-                                let _ = child.kill();
-                                let _ = child.wait();
+                        while now.elapsed().as_secs() < 2 {
+                            std::thread::sleep(Duration::from_millis(200));
+                            if let Ok(Some(_)) = child.try_wait() {
+                                break;
                             }
                         }
-
-                        log::info!("Re-running command");
-                        child = command.spawn().context("cannot spawn command")?;
-                        command_start = Instant::now();
-                    } else {
-                        log::trace!("Ignoring changes at {}", path.display());
                     }
+
+                    match child.try_wait() {
+                        Ok(Some(_)) => {}
+                        _ => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                    }
+
+                    log::info!("Re-running command");
+                    child = command.spawn().context("cannot spawn command")?;
+                    command_start = Instant::now();
                 }
-                Ok(_) => {}
+                Ok(event) => log::trace!("Ignoring changes in {:?}", event),
                 Err(err) => log::error!("watch error: {}", err),
             }
         }
