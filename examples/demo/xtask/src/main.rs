@@ -1,16 +1,16 @@
 use std::process::Command;
 use xtask_watch::{
-    anyhow::{ensure, Context, Result},
     clap,
+    clap::Parser,
 };
 
-#[derive(clap::Parser)]
+#[derive(Parser)]
 enum Opt {
     Watch(xtask_watch::Watch),
 }
 
-fn main() -> Result<()> {
-    let opt: Opt = clap::Parser::parse();
+fn main() {
+    let opt: Opt = Parser::parse();
 
     env_logger::builder()
         .filter(Some("xtask"), log::LevelFilter::Trace)
@@ -22,9 +22,7 @@ fn main() -> Result<()> {
     match opt {
         Opt::Watch(watch) => {
             log::info!("starting to watch `project`");
-            watch.run(run_command)?;
+            watch.run(run_command).expect("cannot run watch");
         }
     }
-
-    Ok(())
 }

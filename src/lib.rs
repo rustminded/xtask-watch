@@ -1,3 +1,8 @@
+//! This crate provides a `Watch` that launch a given command, re-launching this
+//! command when changes are detected in your source code.
+
+#![deny(missing_docs)]
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
@@ -182,10 +187,16 @@ impl Watch {
         loop {
             match rx.recv() {
                 Ok(notify::RawEvent {
-                    path: Some(path), ..
-                }) if !watch.is_excluded_path(&path) && !watch.is_hidden_path(&path) => {
+                    path: Some(path),
+                    op: Ok(op),
+                    ..
+                }) if !watch.is_excluded_path(&path)
+                    && !watch.is_hidden_path(&path)
+                    && path.exists()
+                    && op != notify::Op::CREATE =>
+                {
                     if command_start.elapsed() >= watch.debounce {
-                        log::trace!("Detected changes at {}", path.display());
+                        log::trace!("Detected changes at {} | {:?}", path.display(), op);
                         #[cfg(unix)]
                         {
                             let now = Instant::now();
@@ -218,7 +229,7 @@ impl Watch {
                         child = command.spawn().context("cannot spawn command")?;
                         command_start = Instant::now();
                     } else {
-                        log::trace!("Ignoring changes at {}", path.display());
+                        log::trace!("Ignoring changes at {} | {:?}", path.display(), op);
                     }
                 }
                 Ok(_) => {}
