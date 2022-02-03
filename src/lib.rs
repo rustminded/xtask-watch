@@ -229,9 +229,7 @@ impl Watch {
                     child = command.spawn().context("cannot spawn command")?;
                     command_start = Instant::now();
                 }
-                Ok(event) => {
-                    log::trace!("Ignoring changes in {:?}", event);
-                }
+                Ok(event) => log::trace!("Ignoring changes in {:?}", event),
                 Err(err) => log::error!("watch error: {}", err),
             }
         }
