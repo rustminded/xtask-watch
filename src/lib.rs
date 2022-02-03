@@ -193,44 +193,41 @@ impl Watch {
                 }) if !watch.is_excluded_path(&path)
                     && !watch.is_hidden_path(&path)
                     && path.exists()
-                    && op != notify::Op::CREATE =>
+                    && op != notify::Op::CREATE
+                    && command_start.elapsed() >= watch.debounce =>
                 {
-                    if command_start.elapsed() >= watch.debounce {
-                        log::trace!("Detected changes at {} | {:?}", path.display(), op);
-                        #[cfg(unix)]
-                        {
-                            let now = Instant::now();
+                    log::trace!("Detected changes at {}", path.display());
+                    #[cfg(unix)]
+                    {
+                        let now = Instant::now();
 
-                            unsafe {
-                                log::trace!("Killing watch's command process");
-                                libc::kill(
-                                    child.id().try_into().expect("cannot get process id"),
-                                    libc::SIGTERM,
-                                );
-                            }
-
-                            while now.elapsed().as_secs() < 2 {
-                                std::thread::sleep(Duration::from_millis(200));
-                                if let Ok(Some(_)) = child.try_wait() {
-                                    break;
-                                }
-                            }
+                        unsafe {
+                            log::trace!("Killing watch's command process");
+                            libc::kill(
+                                child.id().try_into().expect("cannot get process id"),
+                                libc::SIGTERM,
+                            );
                         }
 
-                        match child.try_wait() {
-                            Ok(Some(_)) => {}
-                            _ => {
-                                let _ = child.kill();
-                                let _ = child.wait();
+                        while now.elapsed().as_secs() < 2 {
+                            std::thread::sleep(Duration::from_millis(200));
+                            if let Ok(Some(_)) = child.try_wait() {
+                                break;
                             }
                         }
-
-                        log::info!("Re-running command");
-                        child = command.spawn().context("cannot spawn command")?;
-                        command_start = Instant::now();
-                    } else {
-                        log::trace!("Ignoring changes at {} | {:?}", path.display(), op);
                     }
+
+                    match child.try_wait() {
+                        Ok(Some(_)) => {}
+                        _ => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
+                    }
+
+                    log::info!("Re-running command");
+                    child = command.spawn().context("cannot spawn command")?;
+                    command_start = Instant::now();
                 }
                 Ok(_) => {}
                 Err(err) => log::error!("watch error: {}", err),
