@@ -1,3 +1,41 @@
+//! This crate provides a [`Watch`] that launch a given command, re-launching
+//! the command when changes are detected in your source code.
+//!
+//! This [`Watch`] is based on the intended to be used on projects that rely on
+//! the [xtask concept](https://github.com/matklad/cargo-xtask/) and implement
+//! [`clap::Parser`] to be added easily to an existing CLI implementation.
+//!
+//! # Setup
+//!
+//! The best way to add xtask-watch to your project is to create a workspace
+//! with two packages: your project's package and the xtask package.
+//!
+//! ## Create or update a project using xtask
+//!
+//! * New project - To create a new project using xtask, you can use the
+//!     following:
+//!     ```console
+//!     mkdir project_name
+//!     cd project_name
+//!     cargo new my-project
+//!     cargo new xtask
+//!     touch Cargo.toml
+//!     ```
+//!     Open the workspace's Cargo.toml and add the following:
+//!     ```toml
+//!     [workspace]
+//!     members = [
+//!         "my-project",
+//!         "xtask",
+//!     ]
+//!     ```
+//! * Project with a single package - If your project contains only one package,
+//!     move all the content of the project expect the `.git` directory into a
+//!     new directory named after the package name at the root of the project.
+//!     * Creates a new package for xtasks using the following:
+//!     ```console
+//!     cargo new xtask
+//!     ```
 use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
