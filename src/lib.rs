@@ -10,18 +10,22 @@
 //! The best way to add xtask-watch to your project is to create a workspace
 //! with two packages: your project's package and the xtask package.
 //!
-//! ## Create or update a project using xtask
+//! ## Create a project using xtask
 //!
-//! * New project - To create a new project using xtask, you can use the
-//!     following:
+//! * Create a new directory that will contains the two package of your project
+//!     and the workspace's `Cargo.toml`
 //!     ```console
-//!     mkdir project_name
-//!     cd project_name
-//!     cargo new my-project
-//!     cargo new xtask
-//!     touch Cargo.toml
+//!     $ mkdir my-project
+//!     $ cd my-project
+//!     $ touch Cargo.toml
 //!     ```
-//!     Open the workspace's Cargo.toml and add the following:
+//! * Create the project package and the xtask package using `cargo new`:
+//!     ```console
+//!     $ cargo new my-project
+//!     $ cargo new xtask
+//!     ```
+//!
+//! * Open the workspace's Cargo.toml and add the following:
 //!     ```toml
 //!     [workspace]
 //!     members = [
@@ -29,36 +33,10 @@
 //!         "xtask",
 //!     ]
 //!     ```
-//! * Project with a single package - If your project contains only one package,
-//!     move all the content of the project expect the `.git` directory into a
-//!     new directory named after the package name at the root of the project.
-//!     * Creates a new package for xtasks using the following:
-//!         ```console
-//!         cargo new xtask
-//!         ```
-//!     * Create a new Cargo.toml at the root of the project and add the
-//!         following:
-//!         ```console
-//!         [workspace]
-//!         members = [
-//!             "my-project",
-//!             "xtask",
-//!         ]
-//!         ```
-//!         Replace `my-project` by the name of the project package.
-//!
-//! * Project with a workspace - If your project already use a workspace,
-//!     * Create a new package:
-//!         ```console
-//!         cargo new xtask
-//!         ```
-//!     * Add the new package to your  workspace's Cargo.toml using the workspace
-//!         `members` field.
 //!
 //! ## Add a command alias
 //!
-//! Create a `.cargo` directory at the workspace root and add a file named
-//! `config.toml` with the following content:
+//! Create a `.cargo/config.toml` file and add the following content:
 //!
 //! ```toml
 //! [alias]
