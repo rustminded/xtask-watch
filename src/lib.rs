@@ -45,8 +45,66 @@
 //!             "xtask",
 //!         ]
 //!         ```
+//!         Replace `my-project` by the name of the project package.
 //!
-
+//! * Project with a workspace - If your project already use a workspace,
+//!     * Create a new package:
+//!         ```console
+//!         cargo new xtask
+//!         ```
+//!     * Add the new package to your  workspace's Cargo.toml using the workspace
+//!         `members` field.
+//!
+//! ## Add a command alias
+//!
+//! Create a `.cargo` directory at the workspace root and add a file named
+//! `config.toml` with the following content:
+//!
+//! ```toml
+//! [alias]
+//! xtask = "run --package xtask --"
+//! ```
+//!
+//! Now you can run your xtask package using:
+//!
+//! ```console
+//! cargo xtask
+//! ```
+//!
+//! ## Directory layout example
+//!
+//! If the name of the project package is `my-project`, the directory layout should
+//! look like this:
+//!
+//! ```console
+//! project
+//! ├── .cargo
+//! │   └── config.toml
+//! ├── Cargo.toml
+//! ├── my-project
+//! │   ├── Cargo.toml
+//! │   └── src
+//! │       └── ...
+//! └── xtask
+//!     ├── Cargo.toml
+//!     └── src
+//!         └── main.rs
+//! ```
+//!
+//! You can find more informations about xtask
+//! [here](https://github.com/cargo-xtask/).
+//!
+//! ## Use xtask-watch as a dependency
+//!
+//! Finally, add the following to the xtask package's Cargo.toml:
+//!
+//! ```toml
+//! [dependencies]
+//! xtask-watch = "0.1.0"
+//! ```
+//!
+//! # Example
+//!
 #![deny(missing_docs)]
 
 use anyhow::{Context, Result};
