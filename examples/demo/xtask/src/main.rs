@@ -6,7 +6,12 @@ use xtask_watch::{
 
 #[derive(clap::Parser)]
 enum Opt {
-    Watch(xtask_watch::Watch),
+    Watch {
+        command: Vec<String>,
+
+        #[clap(flatten)]
+        watch: xtask_watch::Watch,
+    },
 }
 
 fn main() -> Result<()> {
@@ -17,13 +22,27 @@ fn main() -> Result<()> {
         .parse_default_env()
         .init();
 
-    let mut run_command = Command::new("cargo");
-    run_command.arg("check");
-
     match opt {
-        Opt::Watch(watch) => {
-            log::info!("starting to watch `project`");
-            watch.run(run_command)?;
+        Opt::Watch {
+            command,
+            watch,
+        } => {
+            let command = if !command.is_empty() {
+                let mut it = command.iter();
+
+                let mut command = Command::new(it.next().unwrap());
+                command.args(it);
+
+                command
+            } else {
+                let mut command = Command::new("cargo");
+                command.arg("check");
+
+                command
+            };
+
+            log::info!("starting to watch");
+            watch.run(command)?;
         }
     }
 
