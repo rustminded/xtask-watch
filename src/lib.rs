@@ -201,6 +201,30 @@ impl Watch {
         }
     }
 
+    fn is_backup_file(&self, path: &Path) -> bool {
+        if self.watch_paths.is_empty() {
+            path.strip_prefix(&metadata().workspace_root)
+                .expect("cannot strip prefix")
+                .iter()
+                .any(|x| {
+                    x.to_str()
+                        .expect("path contains non Utf-8 characters")
+                        .ends_with('~')
+                })
+        } else {
+            self.watch_paths.iter().any(|x| {
+                path.strip_prefix(x)
+                    .expect("cannot strip prefix")
+                    .iter()
+                    .any(|x| {
+                        x.to_str()
+                            .expect("path contains non Utf-8 characters")
+                            .ends_with('~')
+                    })
+            })
+        }
+    }
+
     /// Run the given `command`, monitor the watched paths and relaunch the
     /// command when changes are detected.
     ///
@@ -238,11 +262,12 @@ impl Watch {
                     ..
                 }) if !watch.is_excluded_path(&path)
                     && !watch.is_hidden_path(&path)
+                    && !watch.is_backup_file(&path)
                     && path.exists()
                     && op != notify::Op::CREATE
                     && command_start.elapsed() >= watch.debounce =>
                 {
-                    log::trace!("Detected changes at {}", path.display());
+                    log::trace!("Detected changes at {} | {:?}", path.display(), op);
                     #[cfg(unix)]
                     {
                         let now = Instant::now();
