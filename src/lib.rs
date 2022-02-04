@@ -107,7 +107,7 @@
 //!
 //! * A basic implementation could look like this:
 //!
-//!     ```rust
+//!     ```rust,no_run
 //!     use std::process::Command;
 //!     use xtask_watch::{
 //!         anyhow::Result,
@@ -121,11 +121,6 @@
 //!
 //!     fn main() -> Result<()> {
 //!         let opt: Opt = clap::Parser::parse();
-//!
-//!         env_logger::builder()
-//!             .filter_level(log::LevelFilter::Info)
-//!             .parse_default_env()
-//!             .init();
 //!
 //!         let mut run_command = Command::new("cargo");
 //!         run_command.arg("check");
