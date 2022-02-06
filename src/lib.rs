@@ -1,9 +1,10 @@
-//! This crate provides a [`Watch`] that launch a given command, re-launching
+//! This crate provides a [`Watch`](crate::Watch) that launch a given command, re-launching
 //! the command when changes are detected in your source code.
 //!
 //! This [`Watch`](crate::Watch) struct is intended to be used with the
 //! [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
-//! [`clap::Parser`] so it can easily be used in your xtask crate. See
+//! [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it
+//! can easily be used in your xtask crate. See
 //! [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
 //! to see how to extend it.
 //!
@@ -57,7 +58,7 @@
 //! look like this:
 //!
 //! ```console
-//! project
+//! my-project
 //! ├── .cargo
 //! │   └── config.toml
 //! ├── Cargo.toml
