@@ -1,18 +1,20 @@
-# xtask-watch
+<!-- cargo-rdme start -->
 
 This crate provides a [`Watch`] that launch a given command, re-launching
 the command when changes are detected in your source code.
 
-This [`Watch`] is based on the intended to be used on projects that rely on
-the [xtask concept](https://github.com/matklad/cargo-xtask/) and implement
-[`clap::Parser`] to be added easily to an existing CLI implementation.
+This [`Watch`] struct is intended to be used with the
+[xtask concept](https://github.com/matklad/cargo-xtask/) and implements
+[`clap::Parser`] so it can easily be used in your xtask crate. See
+[clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
+to see how to extend it.
 
-## Setup
+# Setup
 
 The best way to add xtask-watch to your project is to create a workspace
 with two packages: your project's package and the xtask package.
 
-### Create a project using xtask
+## Create a project using xtask
 
 * Create a new directory that will contains the two package of your project
     and the workspace's `Cargo.toml`
@@ -36,7 +38,7 @@ with two packages: your project's package and the xtask package.
     ]
     ```
 
-### Add a command alias
+## Add a command alias
 
 Create a `.cargo/config.toml` file and add the following content:
 
@@ -51,7 +53,7 @@ Now you can run your xtask package using:
 cargo xtask
 ```
 
-### Directory layout example
+## Directory layout example
 
 If the name of the project package is `my-project`, the directory layout should
 look like this:
@@ -74,7 +76,7 @@ project
 You can find more informations about xtask
 [here](https://github.com/cargo-xtask/).
 
-### Use xtask-watch as a dependency
+## Use xtask-watch as a dependency
 
 Finally, add the following to the xtask package's Cargo.toml:
 
@@ -83,11 +85,11 @@ Finally, add the following to the xtask package's Cargo.toml:
 xtask-watch = "0.1.0"
 ```
 
-## Examples
+# Examples
 
 * A basic implementation could look like this:
 
-    ```rust,no_run
+    ```rust
     use std::process::Command;
     use xtask_watch::{
         anyhow::Result,
@@ -121,4 +123,4 @@ xtask-watch = "0.1.0"
     given by the user (or use `cargo check` by default) and watch the
     workspace after launching this command.
 
-License: MIT OR Apache-2.0
+<!-- cargo-rdme end -->
