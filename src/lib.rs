@@ -1,9 +1,11 @@
 //! This crate provides a [`Watch`] that launch a given command, re-launching
 //! the command when changes are detected in your source code.
 //!
-//! This [`Watch`] is based on the intended to be used on projects that rely on
-//! the [xtask concept](https://github.com/matklad/cargo-xtask/) and implement
-//! [`clap::Parser`] to be added easily to an existing CLI implementation.
+//! This [`Watch`] struct is intended to be used with the
+//! [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
+//! [`clap::Parser`] so it can easily be used in your xtask crate. See
+//! [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
+//! to see how to extend it.
 //!
 //! # Setup
 //!
@@ -118,6 +120,7 @@
 //!     provides an implementation of xtask-watch that naively parse a command
 //!     given by the user (or use `cargo check` by default) and watch the
 //!     workspace after launching this command.
+
 #![deny(missing_docs)]
 
 use anyhow::{Context, Result};

@@ -7,6 +7,7 @@ use xtask_watch::{
 #[derive(clap::Parser)]
 enum Opt {
     Watch {
+        /// If nothing is provided, `cargo check` will be executed.
         command: Vec<String>,
 
         #[clap(flatten)]
