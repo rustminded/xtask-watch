@@ -157,7 +157,7 @@ pub fn package(name: &str) -> Option<&cargo_metadata::Package> {
     metadata().packages.iter().find(|x| x.name == name)
 }
 
-/// Return a [`std::process::Command`] to the xtask command currently ran.
+/// Return a [`std::process::Command`] to the xtask command currently running.
 pub fn xtask_command() -> Command {
     Command::new(env::args_os().next().unwrap())
 }
