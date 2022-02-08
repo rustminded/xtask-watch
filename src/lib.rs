@@ -129,6 +129,7 @@ use clap::Parser;
 use lazy_static::lazy_static;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
+    env,
     path::{Path, PathBuf},
     process::Command,
     sync::mpsc,
@@ -154,6 +155,11 @@ pub fn metadata() -> &'static cargo_metadata::Metadata {
 /// Fetch information of a package in the current crate.
 pub fn package(name: &str) -> Option<&cargo_metadata::Package> {
     metadata().packages.iter().find(|x| x.name == name)
+}
+
+/// Return a [`std::process::Command`] to the xtask command currently ran.
+pub fn xtask_command() -> Command {
+    Command::new(env::args_os().next().unwrap())
 }
 
 /// Watches over your project's source code, relaunching the given command when
