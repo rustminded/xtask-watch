@@ -359,19 +359,17 @@ impl Watch {
 
     fn is_hidden_path(&self, path: &Path) -> bool {
         self.watch_paths.iter().any(|x| {
-            path.strip_prefix(x).iter().any(|x| {
-                x.to_string_lossy()
-                    .starts_with('.')
-            })
+            path.strip_prefix(x)
+                .iter()
+                .any(|x| x.to_string_lossy().starts_with('.'))
         })
     }
 
     fn is_backup_file(&self, path: &Path) -> bool {
         self.watch_paths.iter().any(|x| {
-            path.strip_prefix(x).iter().any(|x| {
-                x.to_string_lossy()
-                    .starts_with('~')
-            })
+            path.strip_prefix(x)
+                .iter()
+                .any(|x| x.to_string_lossy().starts_with('~'))
         })
     }
 }
