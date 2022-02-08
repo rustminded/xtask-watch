@@ -259,76 +259,66 @@ impl Watch {
     }
 
     fn is_hidden_path(&self, path: &Path) -> bool {
-        if self.watch_paths.is_empty() {
-            path.strip_prefix(&metadata().workspace_root)
-                .expect("cannot strip prefix")
-                .iter()
-                .any(|x| {
-                    x.to_str()
-                        .expect("path contains non Utf-8 characters")
-                        .starts_with('.')
-                })
-        } else {
-            self.watch_paths.iter().any(|x| {
-                path.strip_prefix(x)
-                    .expect("cannot strip prefix")
-                    .iter()
-                    .any(|x| {
-                        x.to_str()
-                            .expect("path contains non Utf-8 characters")
-                            .starts_with('.')
-                    })
+        self.watch_paths.iter().any(|x| {
+            path.strip_prefix(x).iter().any(|x| {
+                x.to_str()
+                    .expect("path contains non Utf-8 characters")
+                    .starts_with('.')
             })
-        }
+        })
     }
 
     fn is_backup_file(&self, path: &Path) -> bool {
-        if self.watch_paths.is_empty() {
-            path.strip_prefix(&metadata().workspace_root)
-                .expect("cannot strip prefix")
-                .iter()
-                .any(|x| {
-                    x.to_str()
-                        .expect("path contains non Utf-8 characters")
-                        .ends_with('~')
-                })
-        } else {
-            self.watch_paths.iter().any(|x| {
-                path.strip_prefix(x)
-                    .expect("cannot strip prefix")
-                    .iter()
-                    .any(|x| {
-                        x.to_str()
-                            .expect("path contains non Utf-8 characters")
-                            .ends_with('~')
-                    })
+        self.watch_paths.iter().any(|x| {
+            path.strip_prefix(x).iter().any(|x| {
+                x.to_str()
+                    .expect("path contains non Utf-8 characters")
+                    .starts_with('~')
             })
-        }
+        })
     }
 
     /// Run the given `command`, monitor the watched paths and relaunch the
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(self, mut command: Command) -> Result<()> {
+    pub fn run(mut self, mut command: Command) -> Result<()> {
         let metadata = metadata();
-        let watch = self.exclude_path(&metadata.target_directory);
+
+        self.exclude_paths
+            .push(metadata.target_directory.clone().into_std_path_buf());
+
+        self.exclude_paths = self
+            .exclude_paths
+            .into_iter()
+            .map(|x| {
+                x.canonicalize()
+                    .with_context(|| format!("can't find {}", x.display()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let (tx, rx) = mpsc::channel();
         let mut watcher: RecommendedWatcher =
             notify::Watcher::new_raw(tx).context("could not initialize watcher")?;
 
-        if watch.watch_paths.is_empty() {
-            log::trace!("Watching {}", &metadata.workspace_root);
-            watcher
-                .watch(&metadata.workspace_root, RecursiveMode::Recursive)
-                .context("cannot watch this crate")?;
-        } else {
-            for path in &watch.watch_paths {
-                match watcher.watch(&path, RecursiveMode::Recursive) {
-                    Ok(()) => log::trace!("Watching {}", path.display()),
-                    Err(err) => log::error!("cannot watch {}: {}", path.display(), err),
-                }
+        if self.watch_paths.is_empty() {
+            self.watch_paths
+                .push(metadata.workspace_root.clone().into_std_path_buf());
+        }
+
+        self.watch_paths = self
+            .watch_paths
+            .into_iter()
+            .map(|x| {
+                x.canonicalize()
+                    .with_context(|| format!("can't find {}", x.display()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        for path in &self.watch_paths {
+            match watcher.watch(&path, RecursiveMode::Recursive) {
+                Ok(()) => log::trace!("Watching {}", path.display()),
+                Err(err) => log::error!("cannot watch {}: {}", path.display(), err),
             }
         }
 
@@ -341,12 +331,12 @@ impl Watch {
                     path: Some(path),
                     op: Ok(op),
                     ..
-                }) if !watch.is_excluded_path(&path)
-                    && !watch.is_hidden_path(&path)
-                    && !watch.is_backup_file(&path)
+                }) if !self.is_excluded_path(&path)
                     && path.exists()
+                    && !self.is_hidden_path(&path)
+                    && !self.is_backup_file(&path)
                     && op != notify::Op::CREATE
-                    && command_start.elapsed() >= watch.debounce =>
+                    && command_start.elapsed() >= self.debounce =>
                 {
                     log::trace!("Detected changes at {} | {:?}", path.display(), op);
                     #[cfg(unix)]
