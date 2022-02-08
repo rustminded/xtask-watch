@@ -1,8 +1,5 @@
 use std::process::Command;
-use xtask_watch::{
-    anyhow::Result,
-    clap,
-};
+use xtask_watch::{anyhow::Result, clap};
 
 #[derive(clap::Parser)]
 enum Opt {
@@ -19,15 +16,12 @@ fn main() -> Result<()> {
     let opt: Opt = clap::Parser::parse();
 
     env_logger::builder()
-    .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Info)
         .parse_default_env()
         .init();
 
     match opt {
-        Opt::Watch {
-            command,
-            watch,
-        } => {
+        Opt::Watch { command, watch } => {
             let command = if !command.is_empty() {
                 let mut it = command.iter();
 
