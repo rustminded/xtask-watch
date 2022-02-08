@@ -240,44 +240,6 @@ impl Watch {
         self
     }
 
-    fn is_excluded_path(&self, path: &Path) -> bool {
-        if self.exclude_paths.iter().any(|x| path.starts_with(x)) {
-            return true;
-        }
-
-        if let Ok(stripped_path) = path.strip_prefix(metadata().workspace_root.as_std_path()) {
-            if self
-                .workspace_exclude_paths
-                .iter()
-                .any(|x| stripped_path.starts_with(x))
-            {
-                return true;
-            }
-        }
-
-        false
-    }
-
-    fn is_hidden_path(&self, path: &Path) -> bool {
-        self.watch_paths.iter().any(|x| {
-            path.strip_prefix(x).iter().any(|x| {
-                x.to_str()
-                    .expect("path contains non Utf-8 characters")
-                    .starts_with('.')
-            })
-        })
-    }
-
-    fn is_backup_file(&self, path: &Path) -> bool {
-        self.watch_paths.iter().any(|x| {
-            path.strip_prefix(x).iter().any(|x| {
-                x.to_str()
-                    .expect("path contains non Utf-8 characters")
-                    .starts_with('~')
-            })
-        })
-    }
-
     /// Run the given `command`, monitor the watched paths and relaunch the
     /// command when changes are detected.
     ///
@@ -297,10 +259,6 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (tx, rx) = mpsc::channel();
-        let mut watcher: RecommendedWatcher =
-            notify::Watcher::new_raw(tx).context("could not initialize watcher")?;
-
         if self.watch_paths.is_empty() {
             self.watch_paths
                 .push(metadata.workspace_root.clone().into_std_path_buf());
@@ -314,6 +272,10 @@ impl Watch {
                     .with_context(|| format!("can't find {}", x.display()))
             })
             .collect::<Result<Vec<_>, _>>()?;
+
+        let (tx, rx) = mpsc::channel();
+        let mut watcher: RecommendedWatcher =
+            notify::Watcher::new_raw(tx).context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
             match watcher.watch(&path, RecursiveMode::Recursive) {
@@ -375,6 +337,42 @@ impl Watch {
                 Err(err) => log::error!("watch error: {}", err),
             }
         }
+    }
+
+    fn is_excluded_path(&self, path: &Path) -> bool {
+        if self.exclude_paths.iter().any(|x| path.starts_with(x)) {
+            return true;
+        }
+
+        if let Ok(stripped_path) = path.strip_prefix(metadata().workspace_root.as_std_path()) {
+            if self
+                .workspace_exclude_paths
+                .iter()
+                .any(|x| stripped_path.starts_with(x))
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn is_hidden_path(&self, path: &Path) -> bool {
+        self.watch_paths.iter().any(|x| {
+            path.strip_prefix(x).iter().any(|x| {
+                x.to_string_lossy()
+                    .starts_with('.')
+            })
+        })
+    }
+
+    fn is_backup_file(&self, path: &Path) -> bool {
+        self.watch_paths.iter().any(|x| {
+            path.strip_prefix(x).iter().any(|x| {
+                x.to_string_lossy()
+                    .starts_with('~')
+            })
+        })
     }
 }
 
