@@ -3,9 +3,10 @@
 This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command, re-launching the
 command when changes are detected in your source code.
 
-This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) struct is intended to be used with the [xtask concept](https://github.com/matklad/cargo-xtask/)
-and implements [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it can
-easily be used in your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
+This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) struct is intended to be used with the
+[xtask concept](https://github.com/matklad/cargo-xtask/) and implements
+[`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it can easily be used in
+your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
 to see how to extend it.
 
 # Setup
@@ -119,7 +120,7 @@ fn main() -> Result<()> {
 ## A more complex demonstration
 
 [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
-implementation of xtask-watch that naively parse a command given by the user (or use
-`cargo check` by default) and watch the workspace after launching this command.
+implementation of xtask-watch that naively parse a command given by the user
+(or use `cargo check` by default) and watch the workspace after launching this command.
 
 <!-- cargo-rdme end -->
