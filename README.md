@@ -19,18 +19,22 @@ with two packages: your project's package and the xtask package.
 
 * Create a new directory that will contains the two package of your project
     and the workspace's `Cargo.toml`
+
     ```console
     mkdir my-project
     cd my-project
     touch Cargo.toml
     ```
+
 * Create the project package and the xtask package using `cargo new`:
+
     ```console
     cargo new my-project
     cargo new xtask
     ```
 
 * Open the workspace's Cargo.toml and add the following:
+
     ```toml
     [workspace]
     members = [
@@ -39,19 +43,12 @@ with two packages: your project's package and the xtask package.
     ]
     ```
 
-## Add a command alias
 
-Create a `.cargo/config.toml` file and add the following content:
+* Create a `.cargo/config.toml` file and add the following content:
 
 ```toml
 [alias]
 xtask = "run --package xtask --"
-```
-
-Now you can run your xtask package using:
-
-```console
-cargo xtask
 ```
 
 ## Directory layout example
@@ -74,8 +71,13 @@ my-project
         └── main.rs
 ```
 
+And now you can run your xtask package using:
+
+```console
+cargo xtask
+```
 You can find more informations about xtask
-[here](https://github.com/cargo-xtask/).
+[here](https://github.com/matklad/cargo-xtask/).
 
 ## Use xtask-watch as a dependency
 
@@ -88,7 +90,7 @@ xtask-watch = "0.1.0"
 
 # Examples
 
-* A basic implementation could look like this:
+## A basic implementation
 
     ```rust
     use std::process::Command;
@@ -119,9 +121,9 @@ xtask-watch = "0.1.0"
     }
     ```
 
-* [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
-    provides an implementation of xtask-watch that naively parse a command
-    given by the user (or use `cargo check` by default) and watch the
-    workspace after launching this command.
+## [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
+
+provides an implementation of xtask-watch that naively parse a command given by the user
+(or use `cargo check` by default) and watch the workspace after launching this command.
 
 <!-- cargo-rdme end -->
