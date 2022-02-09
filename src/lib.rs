@@ -119,7 +119,7 @@
 //! }
 //! ```
 //!
-//! ## A more complex demo
+//! ## A more complex demonstration
 //!
 //! [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
 //! implementation of xtask-watch that naively parse a command given by the user (or use
