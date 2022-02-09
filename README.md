@@ -1,4 +1,4 @@
-# xtask-wasm
+# xtask-watch
 
 <!-- cargo-rdme start -->
 
