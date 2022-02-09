@@ -92,38 +92,39 @@ xtask-watch = "0.1.0"
 
 ## A basic implementation
 
-    ```rust
-    use std::process::Command;
-    use xtask_watch::{
-        anyhow::Result,
-        clap,
-    };
+```rust
+use std::process::Command;
+use xtask_watch::{
+    anyhow::Result,
+    clap,
+};
 
-    #[derive(clap::Parser)]
-    enum Opt {
-        Watch(xtask_watch::Watch),
-    }
+#[derive(clap::Parser)]
+enum Opt {
+    Watch(xtask_watch::Watch),
+}
 
-    fn main() -> Result<()> {
-        let opt: Opt = clap::Parser::parse();
+fn main() -> Result<()> {
+    let opt: Opt = clap::Parser::parse();
 
-        let mut run_command = Command::new("cargo");
-        run_command.arg("check");
+    let mut run_command = Command::new("cargo");
+    run_command.arg("check");
 
-        match opt {
-            Opt::Watch(watch) => {
-                log::info!("Starting to watch `cargo check`");
-                watch.run(run_command)?;
-            }
+    match opt {
+        Opt::Watch(watch) => {
+            log::info!("Starting to watch `cargo check`");
+            watch.run(run_command)?;
         }
-
-        Ok(())
     }
-    ```
 
-## [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
+    Ok(())
+}
+```
 
-provides an implementation of xtask-watch that naively parse a command given by the user
-(or use `cargo check` by default) and watch the workspace after launching this command.
+## A more complex demonstration
+
+[`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
+implementation of xtask-watch that naively parse a command given by the user (or use
+`cargo check` by default) and watch the workspace after launching this command.
 
 <!-- cargo-rdme end -->
