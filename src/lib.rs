@@ -119,10 +119,11 @@
 //! }
 //! ```
 //!
-//! ## [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
+//! ## A more complex demo
 //!
-//! Provides an implementation of xtask-watch that naively parse a command given by the user
-//! (or use `cargo check` by default) and watch the workspace after launching this command.
+//! [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
+//! implementation of xtask-watch that naively parse a command given by the user (or use
+//! `cargo check` by default) and watch the workspace after launching this command.
 
 #![deny(missing_docs)]
 
