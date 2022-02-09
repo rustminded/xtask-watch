@@ -1,61 +1,54 @@
-//! This crate provides a [`Watch`](crate::Watch) that launch a given command, re-launching
-//! the command when changes are detected in your source code.
+//! This crate provides a [`Watch`](crate::Watch) that launch a given command, re-launching the
+//! command when changes are detected in your source code.
 //!
 //! This [`Watch`](crate::Watch) struct is intended to be used with the
 //! [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
-//! [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it
-//! can easily be used in your xtask crate. See
-//! [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
+//! [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it can easily be used in
+//! your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
 //! to see how to extend it.
 //!
 //! # Setup
 //!
-//! The best way to add xtask-watch to your project is to create a workspace
-//! with two packages: your project's package and the xtask package.
+//! The best way to add xtask-watch to your project is to create a workspace with two packages:
+//! your project's package and the xtask package.
 //!
 //! ## Create a project using xtask
 //!
 //! * Create a new directory that will contains the two package of your project
-//!     and the workspace's `Cargo.toml`
-//!     ```console
-//!     mkdir my-project
-//!     cd my-project
-//!     touch Cargo.toml
-//!     ```
+//!   and the workspace's `Cargo.toml`
+//!
+//!   ```console
+//!   mkdir my-project
+//!   cd my-project
+//!   touch Cargo.toml
+//!   ```
+//!
 //! * Create the project package and the xtask package using `cargo new`:
-//!     ```console
-//!     cargo new my-project
-//!     cargo new xtask
-//!     ```
+//!
+//!   ```console
+//!   cargo new my-project
+//!   cargo new xtask
+//!   ```
 //!
 //! * Open the workspace's Cargo.toml and add the following:
-//!     ```toml
-//!     [workspace]
-//!     members = [
-//!         "my-project",
-//!         "xtask",
-//!     ]
-//!     ```
 //!
-//! ## Add a command alias
+//!   ```toml
+//!   [workspace]
+//!   members = [
+//!       "my-project",
+//!       "xtask",
+//!   ]
+//!   ```
 //!
-//! Create a `.cargo/config.toml` file and add the following content:
 //!
-//! ```toml
-//! [alias]
-//! xtask = "run --package xtask --"
-//! ```
+//! * Create a `.cargo/config.toml` file and add the following content:
 //!
-//! Now you can run your xtask package using:
+//!   ```toml
+//!   [alias]
+//!   xtask = "run --package xtask --"
+//!   ```
 //!
-//! ```console
-//! cargo xtask
-//! ```
-//!
-//! ## Directory layout example
-//!
-//! If the name of the project package is `my-project`, the directory layout should
-//! look like this:
+//! The directory layout should look like this:
 //!
 //! ```console
 //! my-project
@@ -72,8 +65,13 @@
 //!         └── main.rs
 //! ```
 //!
+//! And now you can run your xtask package using:
+//!
+//! ```console
+//! cargo xtask
+//! ```
 //! You can find more informations about xtask
-//! [here](https://github.com/cargo-xtask/).
+//! [here](https://github.com/matklad/cargo-xtask/).
 //!
 //! ## Use xtask-watch as a dependency
 //!
@@ -86,41 +84,42 @@
 //!
 //! # Examples
 //!
-//! * A basic implementation could look like this:
+//! ## A basic implementation
 //!
-//!     ```rust,no_run
-//!     use std::process::Command;
-//!     use xtask_watch::{
-//!         anyhow::Result,
-//!         clap,
-//!     };
+//! ```rust,no_run
+//! use std::process::Command;
+//! use xtask_watch::{
+//!     anyhow::Result,
+//!     clap,
+//! };
 //!
-//!     #[derive(clap::Parser)]
-//!     enum Opt {
-//!         Watch(xtask_watch::Watch),
-//!     }
+//! #[derive(clap::Parser)]
+//! enum Opt {
+//!     Watch(xtask_watch::Watch),
+//! }
 //!
-//!     fn main() -> Result<()> {
-//!         let opt: Opt = clap::Parser::parse();
+//! fn main() -> Result<()> {
+//!     let opt: Opt = clap::Parser::parse();
 //!
-//!         let mut run_command = Command::new("cargo");
-//!         run_command.arg("check");
+//!     let mut run_command = Command::new("cargo");
+//!     run_command.arg("check");
 //!
-//!         match opt {
-//!             Opt::Watch(watch) => {
-//!                 log::info!("Starting to watch `cargo check`");
-//!                 watch.run(run_command)?;
-//!             }
+//!     match opt {
+//!         Opt::Watch(watch) => {
+//!             log::info!("Starting to watch `cargo check`");
+//!             watch.run(run_command)?;
 //!         }
-//!
-//!         Ok(())
 //!     }
-//!     ```
 //!
-//! * [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
-//!     provides an implementation of xtask-watch that naively parse a command
-//!     given by the user (or use `cargo check` by default) and watch the
-//!     workspace after launching this command.
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## A more complex demonstration
+//!
+//! [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
+//! implementation of xtask-watch that naively parse a command given by the user
+//! (or use `cargo check` by default) and watch the workspace after launching this command.
 
 #![deny(missing_docs)]
 
