@@ -1,3 +1,5 @@
+# xtask-wasm
+
 <!-- cargo-rdme start -->
 
 This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command, re-launching the
@@ -9,12 +11,12 @@ This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html)
 your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
 to see how to extend it.
 
-# Setup
+## Setup
 
 The best way to add xtask-watch to your project is to create a workspace with two packages:
 your project's package and the xtask package.
 
-## Create a project using xtask
+### Create a project using xtask
 
 * Create a new directory that will contains the two package of your project
   and the workspace's `Cargo.toml`
@@ -75,7 +77,7 @@ cargo xtask
 You can find more informations about xtask
 [here](https://github.com/matklad/cargo-xtask/).
 
-## Use xtask-watch as a dependency
+### Use xtask-watch as a dependency
 
 Finally, add the following to the xtask package's Cargo.toml:
 
@@ -84,9 +86,9 @@ Finally, add the following to the xtask package's Cargo.toml:
 xtask-watch = "0.1.0"
 ```
 
-# Examples
+## Examples
 
-## A basic implementation
+### A basic implementation
 
 ```rust
 use std::process::Command;
@@ -117,7 +119,7 @@ fn main() -> Result<()> {
 }
 ```
 
-## A more complex demonstration
+### A more complex demonstration
 
 [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
 implementation of xtask-watch that naively parse a command given by the user
