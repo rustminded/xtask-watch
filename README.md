@@ -1,5 +1,18 @@
 # xtask-watch
 
+[![actions status][actions-badge]][actions-url]
+[![crate version][crates-version-badge]][crates-url]
+[![documentation][docs-badge]][docs-url]
+![licenses][licenses-badge]
+
+[actions-badge]: https://github.com/rustminded/xtask-watch/workflows/main/badge.svg
+[actions-url]: https://github.com/rustminded/xtask-watch/actions
+[crates-version-badge]: https://img.shields.io/crates/v/xtask-watch
+[crates-url]: https://crates.io/crates/xtask-watch
+[docs-badge]: https://docs.rs/xtask-watch/badge.svg
+[docs-url]: https://docs.rs/xtask-watch/
+[licenses-badge]: https://img.shields.io/crates/l/xtask-watch
+
 <!-- cargo-rdme start -->
 
 This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command, re-launching the
