@@ -297,6 +297,7 @@ impl Watch {
                     && !self.is_hidden_path(&path)
                     && !self.is_backup_file(&path)
                     && op != notify::Op::CREATE
+                    && op != notify::Op::RENAME
                     && command_start.elapsed() >= self.debounce =>
                 {
                     log::trace!("Detected changes at {} | {:?}", path.display(), op);
