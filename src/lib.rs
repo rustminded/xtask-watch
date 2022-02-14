@@ -297,6 +297,7 @@ impl Watch {
                     && !self.is_hidden_path(&path)
                     && !self.is_backup_file(&path)
                     && op != notify::Op::CREATE
+                    && op != notify::Op::RENAME
                     && command_start.elapsed() >= self.debounce =>
                 {
                     log::trace!("Detected changes at {} | {:?}", path.display(), op);
@@ -368,7 +369,7 @@ impl Watch {
         self.watch_paths.iter().any(|x| {
             path.strip_prefix(x)
                 .iter()
-                .any(|x| x.to_string_lossy().starts_with('~'))
+                .any(|x| x.to_string_lossy().ends_with('~'))
         })
     }
 }
