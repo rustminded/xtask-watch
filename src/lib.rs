@@ -369,7 +369,7 @@ impl Watch {
         self.watch_paths.iter().any(|x| {
             path.strip_prefix(x)
                 .iter()
-                .any(|x| x.to_string_lossy().starts_with('~'))
+                .any(|x| x.to_string_lossy().ends_with('~'))
         })
     }
 }
