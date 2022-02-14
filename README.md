@@ -12,8 +12,8 @@
 [crates-url]: https://crates.io/crates/xtask-watch
 [docs-badge]: https://docs.rs/xtask-watch/badge.svg
 [docs-url]: https://docs.rs/xtask-watch/
-[deps-badge]: https://deps.rs/crate/xtask-wasm/0.1.1/status.svg
-[deps-url]: https://deps.rs/crate/xtask-wasm
+[deps-badge]: https://deps.rs/crate/xtask-watch/0.1.1/status.svg
+[deps-url]: https://deps.rs/crate/xtask-watch
 [licenses-badge]: https://img.shields.io/crates/l/xtask-watch
 
 <!-- cargo-rdme start -->
