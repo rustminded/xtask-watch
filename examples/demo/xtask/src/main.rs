@@ -4,6 +4,8 @@ use xtask_watch::{anyhow::Result, clap};
 #[derive(clap::Parser)]
 enum Opt {
     Watch {
+        /// Command executed when changes are detected.
+        ///
         /// If nothing is provided, `cargo check` will be executed.
         command: Vec<String>,
 
