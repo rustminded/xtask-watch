@@ -138,4 +138,36 @@ fn main() -> Result<()> {
 implementation of xtask-watch that naively parse a command given by the user
 (or use `cargo check` by default) and watch the workspace after launching this command.
 
+## Troubleshooting
+
+When using the re-export of [`clap`](https://docs.rs/clap/latest/clap), you
+might encounter this error:
+
+```console
+error[E0433]: failed to resolve: use of undeclared crate or module `clap`
+ --> xtask/src/main.rs:4:10
+  |
+4 | #[derive(Parser)]
+  |          ^^^^^^ use of undeclared crate or module `clap`
+  |
+  = note: this error originates in the derive macro `Parser` (in Nightly builds, run with -Z macro-backtrace for more info)
+```
+
+This occurs because you need to import clap in the scope too. This error can
+be resolved like this:
+
+```rust
+use xtask_wasm::clap;
+
+#[derive(clap::Parser)]
+```
+
+Or like this:
+
+```rust
+use xtask_wasm::{clap, clap::Parser};
+
+#[derive(Parser)]
+```
+
 <!-- cargo-rdme end -->
