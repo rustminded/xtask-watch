@@ -194,12 +194,20 @@ pub fn xtask_command() -> Command {
     Command::new(env::args_os().next().unwrap())
 }
 
-/// Watches over your project's source code, relaunching the given command when
+/// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 #[non_exhaustive]
 #[derive(Debug, Parser)]
+#[clap(
+    about = "Watches over your project's source code.",
+    long_about = "Watches over your project's source code. \n\
+        Re-launching a given command when changes are detected.
+    ",
+)]
 pub struct Watch {
-    /// Watch specific file(s) or folder(s). The default is the workspace root.
+    /// Watch specific file(s) or folder(s).
+    ///
+    /// The default is the workspace root.
     #[clap(long = "watch", short = 'w')]
     pub watch_paths: Vec<PathBuf>,
     /// Paths that will be excluded.
