@@ -141,17 +141,19 @@
 //! be resolved like this:
 //!
 //! ```rust
-//! use xtask_wasm::clap;
+//! use xtask_watch::clap;
 //!
 //! #[derive(clap::Parser)]
+//! struct MyStruct {}
 //! ```
 //!
 //! Or like this:
 //!
 //! ```rust
-//! use xtask_wasm::{clap, clap::Parser};
+//! use xtask_watch::{clap, clap::Parser};
 //!
 //! #[derive(Parser)]
+//! struct MyStruct {}
 //! ```
 
 #![deny(missing_docs)]
@@ -202,7 +204,7 @@ pub fn xtask_command() -> Command {
     about = "Watches over your project's source code.",
     long_about = "Watches over your project's source code. \n\
         Re-launching a given command when changes are detected.
-    ",
+    "
 )]
 pub struct Watch {
     /// Watch specific file(s) or folder(s).
