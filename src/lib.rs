@@ -202,9 +202,7 @@ pub fn xtask_command() -> Command {
 #[derive(Debug, Parser)]
 #[clap(
     about = "Watches over your project's source code.",
-    long_about = "Watches over your project's source code. \n\
-        Re-launching a given command when changes are detected.
-    "
+    long_about = "Watches over your project's source code."
 )]
 pub struct Watch {
     /// Watch specific file(s) or folder(s).
