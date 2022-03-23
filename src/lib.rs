@@ -200,10 +200,7 @@ pub fn xtask_command() -> Command {
 /// changes are detected.
 #[non_exhaustive]
 #[derive(Debug, Parser)]
-#[clap(
-    about = "Watches over your project's source code.",
-    long_about = "Watches over your project's source code."
-)]
+#[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
     /// Watch specific file(s) or folder(s).
     ///
