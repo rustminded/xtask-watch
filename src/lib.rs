@@ -1,16 +1,16 @@
-//! This crate provides a [`Watch`](crate::Watch) that launch a given command, re-launching the
-//! command when changes are detected in your source code.
+//! This crate provides a [`Watch`](crate::Watch) that launch a given command,
+//! re-launching the command when changes are detected in your source code.
 //!
 //! This [`Watch`](crate::Watch) struct is intended to be used with the
 //! [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
-//! [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it can easily be used in
-//! your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
+//! [`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it
+//! can easily be used in your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/v3.0.14/examples/derive_ref/README.md#arg-attributes)
 //! to see how to extend it.
 //!
 //! # Setup
 //!
-//! The best way to add xtask-watch to your project is to create a workspace with two packages:
-//! your project's package and the xtask package.
+//! The best way to add xtask-watch to your project is to create a workspace
+//! with two packages: your project's package and the xtask package.
 //!
 //! ## Create a project using xtask
 //!
@@ -117,9 +117,44 @@
 //!
 //! ## A more complex demonstration
 //!
-//! [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
-//! implementation of xtask-watch that naively parse a command given by the user
-//! (or use `cargo check` by default) and watch the workspace after launching this command.
+//! [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
+//! provides an implementation of xtask-watch that naively parse a command given
+//! by the user (or use `cargo check` by default) and watch the workspace after
+//! launching this command.
+//!
+//! # Troubleshooting
+//!
+//! When using the re-export of [`clap`](https://docs.rs/clap/latest/clap), you
+//! might encounter this error:
+//!
+//! ```console
+//! error[E0433]: failed to resolve: use of undeclared crate or module `clap`
+//!  --> xtask/src/main.rs:4:10
+//!   |
+//! 4 | #[derive(Parser)]
+//!   |          ^^^^^^ use of undeclared crate or module `clap`
+//!   |
+//!   = note: this error originates in the derive macro `Parser` (in Nightly builds, run with -Z macro-backtrace for more info)
+//! ```
+//!
+//! This occurs because you need to import clap in the scope too. This error can
+//! be resolved like this:
+//!
+//! ```rust
+//! use xtask_watch::clap;
+//!
+//! #[derive(clap::Parser)]
+//! struct MyStruct {}
+//! ```
+//!
+//! Or like this:
+//!
+//! ```rust
+//! use xtask_watch::{clap, clap::Parser};
+//!
+//! #[derive(Parser)]
+//! struct MyStruct {}
+//! ```
 
 #![deny(missing_docs)]
 
@@ -161,12 +196,15 @@ pub fn xtask_command() -> Command {
     Command::new(env::args_os().next().unwrap())
 }
 
-/// Watches over your project's source code, relaunching the given command when
+/// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 #[non_exhaustive]
 #[derive(Debug, Parser)]
+#[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
-    /// Watch specific file(s) or folder(s). The default is the workspace root.
+    /// Watch specific file(s) or folder(s).
+    ///
+    /// The default is the workspace root.
     #[clap(long = "watch", short = 'w')]
     pub watch_paths: Vec<PathBuf>,
     /// Paths that will be excluded.
