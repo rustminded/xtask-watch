@@ -199,7 +199,7 @@ pub fn xtask_command() -> Command {
 /// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 #[non_exhaustive]
-#[derive(Debug, Parser)]
+#[derive(Debug, Default, Parser)]
 #[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
     /// Watch specific file(s) or folder(s).
