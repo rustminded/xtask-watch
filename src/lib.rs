@@ -310,9 +310,56 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (tx, rx) = mpsc::channel();
-        let mut watcher =
-            notify::recommended_watcher(tx).context("could not initialize watcher")?;
+        let mut child = command.spawn().context("cannot spawn command")?;
+        let mut command_start = Instant::now();
+
+        let mut watcher = notify::recommended_watcher(|res| match res {
+            Ok(event)
+                if !self.is_excluded_path(&path)
+                    && path.exists()
+                    && !self.is_hidden_path(&path)
+                    && !self.is_backup_file(&path)
+                    && op != notify::Op::CREATE
+                    && op != notify::Op::RENAME
+                    && command_start.elapsed() >= self.debounce =>
+            {
+                log::trace!("Detected changes at {} | {:?}", path.display(), op);
+                #[cfg(unix)]
+                {
+                    let now = Instant::now();
+
+                    unsafe {
+                        log::trace!("Killing watch's command process");
+                        libc::kill(
+                            child.id().try_into().expect("cannot get process id"),
+                            libc::SIGTERM,
+                        );
+                    }
+
+                    while now.elapsed().as_secs() < 2 {
+                        std::thread::sleep(Duration::from_millis(200));
+                        if let Ok(Some(_)) = child.try_wait() {
+                            break;
+                        }
+                    }
+                }
+
+                match child.try_wait() {
+                    Ok(Some(_)) => {}
+                    _ => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                }
+
+                log::info!("Re-running command");
+                child = command.spawn().context("cannot spawn command")?;
+                command_start = Instant::now();
+            }
+            Ok(event) => log::trace!("Ignoring changes in {:?}", event),
+            Err(err) => log::error!("watch error: {}", err),
+        })
+        .context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
             match watcher.watch(&path, RecursiveMode::Recursive) {
@@ -321,60 +368,7 @@ impl Watch {
             }
         }
 
-        let mut child = command.spawn().context("cannot spawn command")?;
-        let mut command_start = Instant::now();
-
-        loop {
-            match rx.recv() {
-                Ok(notify::RawEvent {
-                    path: Some(path),
-                    op: Ok(op),
-                    ..
-                }) if !self.is_excluded_path(&path)
-                    && path.exists()
-                    && !self.is_hidden_path(&path)
-                    && !self.is_backup_file(&path)
-                    && op != notify::Op::CREATE
-                    && op != notify::Op::RENAME
-                    && command_start.elapsed() >= self.debounce =>
-                {
-                    log::trace!("Detected changes at {} | {:?}", path.display(), op);
-                    #[cfg(unix)]
-                    {
-                        let now = Instant::now();
-
-                        unsafe {
-                            log::trace!("Killing watch's command process");
-                            libc::kill(
-                                child.id().try_into().expect("cannot get process id"),
-                                libc::SIGTERM,
-                            );
-                        }
-
-                        while now.elapsed().as_secs() < 2 {
-                            std::thread::sleep(Duration::from_millis(200));
-                            if let Ok(Some(_)) = child.try_wait() {
-                                break;
-                            }
-                        }
-                    }
-
-                    match child.try_wait() {
-                        Ok(Some(_)) => {}
-                        _ => {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                    }
-
-                    log::info!("Re-running command");
-                    child = command.spawn().context("cannot spawn command")?;
-                    command_start = Instant::now();
-                }
-                Ok(event) => log::trace!("Ignoring changes in {:?}", event),
-                Err(err) => log::error!("watch error: {}", err),
-            }
-        }
+        Ok(())
     }
 
     fn is_excluded_path(&self, path: &Path) -> bool {
