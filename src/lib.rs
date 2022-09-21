@@ -311,8 +311,8 @@ impl Watch {
             .collect::<Result<Vec<_>, _>>()?;
 
         let (tx, rx) = mpsc::channel();
-        let mut watcher: RecommendedWatcher =
-            notify::Watcher::new_raw(tx).context("could not initialize watcher")?;
+        let mut watcher =
+            notify::recommended_watcher(tx).context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
             match watcher.watch(&path, RecursiveMode::Recursive) {
