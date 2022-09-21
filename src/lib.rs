@@ -161,11 +161,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
-use notify::{RecursiveMode, Watcher};
+use notify::{Event, EventHandler, RecursiveMode, Watcher};
 use std::{
     env,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
     time::{Duration, Instant},
 };
 
@@ -198,7 +198,7 @@ pub fn xtask_command() -> Command {
 /// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 #[non_exhaustive]
-#[derive(Debug, Default, Parser)]
+#[derive(Clone, Debug, Default, Parser)]
 #[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
     /// Watch specific file(s) or folder(s).
@@ -309,53 +309,20 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut child = command.spawn().context("cannot spawn command")?;
-        let mut command_start = Instant::now();
+        let child = command.spawn().context("cannot spawn command")?;
 
-        let mut watcher = notify::recommended_watcher(|res| match res {
-            Ok(event) => {
-                if self.compare_event(&event, command_start.elapsed()) {
-                    #[cfg(unix)]
-                    {
-                        let now = Instant::now();
+        let handler = WatchEventHandler {
+            watch: self.clone(),
+            command,
+            child,
+            command_start: Instant::now(),
+        };
 
-                        unsafe {
-                            log::trace!("Killing watch's command process");
-                            libc::kill(
-                                child.id().try_into().expect("cannot get process id"),
-                                libc::SIGTERM,
-                            );
-                        }
-
-                        while now.elapsed().as_secs() < 2 {
-                            std::thread::sleep(Duration::from_millis(200));
-                            if let Ok(Some(_)) = child.try_wait() {
-                                break;
-                            }
-                        }
-                    }
-
-                    match child.try_wait() {
-                        Ok(Some(_)) => {}
-                        _ => {
-                            let _ = child.kill();
-                            let _ = child.wait();
-                        }
-                    }
-
-                    log::info!("Re-running command");
-                    child = command.spawn().context("cannot spawn command")?;
-                    command_start = Instant::now();
-                } else {
-                    log::trace!("Ignoring changes in {:?}", event);
-                }
-            }
-            Err(err) => log::error!("watch error: {}", err),
-        })
-        .context("could not initialize watcher")?;
+        let mut watcher =
+            notify::recommended_watcher(handler).context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
-            match watcher.watch(&path, RecursiveMode::Recursive) {
+            match watcher.watch(path, RecursiveMode::Recursive) {
                 Ok(()) => log::trace!("Watching {}", path.display()),
                 Err(err) => log::error!("cannot watch {}: {}", path.display(), err),
             }
@@ -369,10 +336,10 @@ impl Watch {
             .paths
             .iter()
             .filter(|x| {
-                !self.is_excluded_path(&x)
+                !self.is_excluded_path(x)
                     && x.exists()
-                    && !self.is_hidden_path(&x)
-                    && !self.is_backup_file(&x)
+                    && !self.is_hidden_path(x)
+                    && !self.is_backup_file(x)
                     && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
                     && event.kind
                         != notify::EventKind::Modify(notify::event::ModifyKind::Name(
@@ -424,6 +391,61 @@ impl Watch {
                 .iter()
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
+    }
+}
+
+struct WatchEventHandler {
+    watch: Watch,
+    command: Command,
+    child: Child,
+    command_start: Instant,
+}
+
+impl EventHandler for WatchEventHandler {
+    fn handle_event(&mut self, event: Result<Event, notify::Error>) {
+        match event {
+            Ok(event) => {
+                if self
+                    .watch
+                    .compare_event(&event, self.command_start.elapsed())
+                {
+                    #[cfg(unix)]
+                    {
+                        let now = Instant::now();
+
+                        unsafe {
+                            log::trace!("Killing watch's command process");
+                            libc::kill(
+                                self.child.id().try_into().expect("cannot get process id"),
+                                libc::SIGTERM,
+                            );
+                        }
+
+                        while now.elapsed().as_secs() < 2 {
+                            std::thread::sleep(Duration::from_millis(200));
+                            if let Ok(Some(_)) = self.child.try_wait() {
+                                break;
+                            }
+                        }
+                    }
+
+                    match self.child.try_wait() {
+                        Ok(Some(_)) => {}
+                        _ => {
+                            let _ = self.child.kill();
+                            let _ = self.child.wait();
+                        }
+                    }
+
+                    log::info!("Re-running command");
+                    self.child = self.command.spawn().expect("cannot spawn command");
+                    self.command_start = Instant::now();
+                } else {
+                    log::trace!("Ignoring changes in {:?}", event);
+                }
+            }
+            Err(err) => log::error!("watch error: {}", err),
+        }
     }
 }
 
