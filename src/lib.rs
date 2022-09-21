@@ -161,12 +161,11 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecursiveMode, Watcher};
 use std::{
     env,
     path::{Path, PathBuf},
     process::Command,
-    sync::mpsc,
     time::{Duration, Instant},
 };
 
@@ -314,49 +313,43 @@ impl Watch {
         let mut command_start = Instant::now();
 
         let mut watcher = notify::recommended_watcher(|res| match res {
-            Ok(event)
-                if !self.is_excluded_path(&path)
-                    && path.exists()
-                    && !self.is_hidden_path(&path)
-                    && !self.is_backup_file(&path)
-                    && op != notify::Op::CREATE
-                    && op != notify::Op::RENAME
-                    && command_start.elapsed() >= self.debounce =>
-            {
-                log::trace!("Detected changes at {} | {:?}", path.display(), op);
-                #[cfg(unix)]
-                {
-                    let now = Instant::now();
+            Ok(event) => {
+                if self.compare_event(&event, command_start.elapsed()) {
+                    #[cfg(unix)]
+                    {
+                        let now = Instant::now();
 
-                    unsafe {
-                        log::trace!("Killing watch's command process");
-                        libc::kill(
-                            child.id().try_into().expect("cannot get process id"),
-                            libc::SIGTERM,
-                        );
-                    }
+                        unsafe {
+                            log::trace!("Killing watch's command process");
+                            libc::kill(
+                                child.id().try_into().expect("cannot get process id"),
+                                libc::SIGTERM,
+                            );
+                        }
 
-                    while now.elapsed().as_secs() < 2 {
-                        std::thread::sleep(Duration::from_millis(200));
-                        if let Ok(Some(_)) = child.try_wait() {
-                            break;
+                        while now.elapsed().as_secs() < 2 {
+                            std::thread::sleep(Duration::from_millis(200));
+                            if let Ok(Some(_)) = child.try_wait() {
+                                break;
+                            }
                         }
                     }
-                }
 
-                match child.try_wait() {
-                    Ok(Some(_)) => {}
-                    _ => {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                    match child.try_wait() {
+                        Ok(Some(_)) => {}
+                        _ => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                        }
                     }
-                }
 
-                log::info!("Re-running command");
-                child = command.spawn().context("cannot spawn command")?;
-                command_start = Instant::now();
+                    log::info!("Re-running command");
+                    child = command.spawn().context("cannot spawn command")?;
+                    command_start = Instant::now();
+                } else {
+                    log::trace!("Ignoring changes in {:?}", event);
+                }
             }
-            Ok(event) => log::trace!("Ignoring changes in {:?}", event),
             Err(err) => log::error!("watch error: {}", err),
         })
         .context("could not initialize watcher")?;
@@ -369,6 +362,34 @@ impl Watch {
         }
 
         Ok(())
+    }
+
+    fn compare_event(&self, event: &notify::Event, command_start: Duration) -> bool {
+        let paths = event
+            .paths
+            .iter()
+            .filter(|x| {
+                !self.is_excluded_path(&x)
+                    && x.exists()
+                    && !self.is_hidden_path(&x)
+                    && !self.is_backup_file(&x)
+                    && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
+                    && event.kind
+                        != notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                            notify::event::RenameMode::Any,
+                        ))
+                    && command_start >= self.debounce
+            })
+            .collect::<Vec<_>>();
+
+        if paths.is_empty() {
+            false
+        } else {
+            for path in paths {
+                log::trace!("Detected changes at {} | {:?}", path.display(), event.kind);
+            }
+            true
+        }
     }
 
     fn is_excluded_path(&self, path: &Path) -> bool {
