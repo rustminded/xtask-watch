@@ -332,31 +332,18 @@ impl Watch {
     }
 
     fn compare_event(&self, event: &notify::Event, command_start: Duration) -> bool {
-        let paths = event
-            .paths
-            .iter()
-            .filter(|x| {
-                !self.is_excluded_path(x)
-                    && x.exists()
-                    && !self.is_hidden_path(x)
-                    && !self.is_backup_file(x)
-                    && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
-                    && event.kind
-                        != notify::EventKind::Modify(notify::event::ModifyKind::Name(
-                            notify::event::RenameMode::Any,
-                        ))
-                    && command_start >= self.debounce
-            })
-            .collect::<Vec<_>>();
-
-        if paths.is_empty() {
-            false
-        } else {
-            for path in paths {
-                log::trace!("Detected changes at {} | {:?}", path.display(), event.kind);
-            }
-            true
-        }
+        event.paths.iter().any(|x| {
+            !self.is_excluded_path(x)
+                && x.exists()
+                && !self.is_hidden_path(x)
+                && !self.is_backup_file(x)
+                && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
+                && event.kind
+                    != notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                        notify::event::RenameMode::Any,
+                    ))
+                && command_start >= self.debounce
+        })
     }
 
     fn is_excluded_path(&self, path: &Path) -> bool {
@@ -409,6 +396,7 @@ impl EventHandler for WatchEventHandler {
                     .watch
                     .compare_event(&event, self.command_start.elapsed())
                 {
+                    log::trace!("Changes detected in {:?}", event);
                     #[cfg(unix)]
                     {
                         let now = Instant::now();
