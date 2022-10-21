@@ -331,7 +331,7 @@ impl Watch {
         Ok(())
     }
 
-    fn compare_event(&self, event: &notify::Event, command_start: Duration) -> bool {
+    fn compare_event(&self, event: &notify::Event, command_duration: Duration) -> bool {
         event.paths.iter().any(|x| {
             !self.is_excluded_path(x)
                 && x.exists()
@@ -342,7 +342,7 @@ impl Watch {
                     != notify::EventKind::Modify(notify::event::ModifyKind::Name(
                         notify::event::RenameMode::Any,
                     ))
-                && command_start >= self.debounce
+                && command_duration >= self.debounce
         })
     }
 
