@@ -393,7 +393,7 @@ impl EventHandler for WatchEventHandler {
         match event {
             Ok(event) => {
                 if self.watch.compare_event(&event, self.command_start) {
-                    log::trace!("Changes detected in {:?}", event);
+                    log::trace!("Changes detected in {event:?}");
                     #[cfg(unix)]
                     {
                         let killing_start = Instant::now();
