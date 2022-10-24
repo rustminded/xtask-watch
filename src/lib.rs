@@ -324,14 +324,14 @@ impl Watch {
         for path in &self.watch_paths {
             match watcher.watch(path, RecursiveMode::Recursive) {
                 Ok(()) => log::trace!("Watching {}", path.display()),
-                Err(err) => log::error!("cannot watch {}: {}", path.display(), err),
+                Err(err) => log::error!("cannot watch {}: {err}", path.display()),
             }
         }
 
         Ok(())
     }
 
-    fn compare_event(&self, event: &notify::Event, command_duration: Duration) -> bool {
+    fn compare_event(&self, event: &notify::Event, command_start: Instant) -> bool {
         event.paths.iter().any(|x| {
             !self.is_excluded_path(x)
                 && x.exists()
@@ -342,7 +342,7 @@ impl Watch {
                     != notify::EventKind::Modify(notify::event::ModifyKind::Name(
                         notify::event::RenameMode::Any,
                     ))
-                && command_duration >= self.debounce
+                && command_start.elapsed() >= self.debounce
         })
     }
 
@@ -392,14 +392,11 @@ impl EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if self
-                    .watch
-                    .compare_event(&event, self.command_start.elapsed())
-                {
+                if self.watch.compare_event(&event, self.command_start) {
                     log::trace!("Changes detected in {:?}", event);
                     #[cfg(unix)]
                     {
-                        let now = Instant::now();
+                        let killing_start = Instant::now();
 
                         unsafe {
                             log::trace!("Killing watch's command process");
@@ -409,7 +406,7 @@ impl EventHandler for WatchEventHandler {
                             );
                         }
 
-                        while now.elapsed().as_secs() < 2 {
+                        while killing_start.elapsed().as_secs() < 2 {
                             std::thread::sleep(Duration::from_millis(200));
                             if let Ok(Some(_)) = self.child.try_wait() {
                                 break;
@@ -429,10 +426,10 @@ impl EventHandler for WatchEventHandler {
                     self.child = self.command.spawn().expect("cannot spawn command");
                     self.command_start = Instant::now();
                 } else {
-                    log::trace!("Ignoring changes in {:?}", event);
+                    log::trace!("Ignoring changes in {event:?}");
                 }
             }
-            Err(err) => log::error!("watch error: {}", err),
+            Err(err) => log::error!("watch error: {err}"),
         }
     }
 }
