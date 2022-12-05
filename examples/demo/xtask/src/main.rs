@@ -3,6 +3,7 @@ use xtask_watch::{anyhow::Result, clap};
 
 #[derive(clap::Parser)]
 enum Opt {
+    #[group(skip)]
     Watch {
         /// Command executed when changes are detected.
         ///
@@ -18,7 +19,7 @@ fn main() -> Result<()> {
     let opt: Opt = clap::Parser::parse();
 
     env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
+        .filter_level(log::LevelFilter::Trace)
         .parse_default_env()
         .init();
 
