@@ -166,7 +166,7 @@ use std::sync::mpsc::{channel, Sender};
 use std::{
     env,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
     time::{Duration, Instant},
 };
 
@@ -333,33 +333,7 @@ impl Watch {
         }
 
         for _ in rx {
-            #[cfg(unix)]
-            {
-                let killing_start = Instant::now();
-
-                unsafe {
-                    log::trace!("Killing watch's command process");
-                    libc::kill(
-                        child.id().try_into().expect("cannot get process id"),
-                        libc::SIGTERM,
-                    );
-                }
-
-                while killing_start.elapsed().as_secs() < 2 {
-                    std::thread::sleep(Duration::from_millis(200));
-                    if let Ok(Some(_)) = child.try_wait() {
-                        break;
-                    }
-                }
-            }
-
-            match child.try_wait() {
-                Ok(Some(_)) => {}
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                }
-            }
+            kill_process(child);
 
             log::info!("Re-running command");
             child = command.spawn().expect("cannot spawn command");
@@ -403,6 +377,36 @@ impl Watch {
     }
 }
 
+fn kill_process(mut child: Child) {
+    #[cfg(unix)]
+    {
+        let killing_start = Instant::now();
+
+        unsafe {
+            log::trace!("Killing watch's command process");
+            libc::kill(
+                child.id().try_into().expect("cannot get process id"),
+                libc::SIGTERM,
+            );
+        }
+
+        while killing_start.elapsed().as_secs() < 2 {
+            std::thread::sleep(Duration::from_millis(200));
+            if let Ok(Some(_)) = child.try_wait() {
+                break;
+            }
+        }
+    }
+
+    match child.try_wait() {
+        Ok(Some(_)) => {}
+        _ => {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 struct WatchEventHandler {
     watch: Watch,
     tx: Sender<()>,
@@ -427,6 +431,7 @@ impl EventHandler for WatchEventHandler {
                 }) {
                     log::trace!("Changes detected in {event:?}");
                     self.command_start = Instant::now();
+
                     self.tx.send(()).expect("can send");
                 } else {
                     log::trace!("Ignoring changes in {event:?}");
