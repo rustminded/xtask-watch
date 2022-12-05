@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     let opt: Opt = clap::Parser::parse();
 
     env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(log::LevelFilter::Info)
         .parse_default_env()
         .init();
 
