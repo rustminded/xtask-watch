@@ -316,14 +316,12 @@ impl Watch {
 
         let handler = WatchEventHandler {
             watch: self.clone(),
-            tx: tx.clone(),
+            tx,
             command_start: Instant::now(),
         };
 
         let mut watcher =
             notify::recommended_watcher(handler).context("could not initialize watcher")?;
-
-        tx.send(()).expect("cannot send");
 
         for path in &self.watch_paths {
             match watcher.watch(path, RecursiveMode::Recursive) {
