@@ -162,6 +162,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
+use std::sync::mpsc::{channel, Sender};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -309,12 +310,13 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let child = command.spawn().context("cannot spawn command")?;
+        let mut child = command.spawn().context("cannot spawn command")?;
+
+        let (tx, rx) = channel();
 
         let handler = WatchEventHandler {
             watch: self.clone(),
-            command,
-            child,
+            tx,
             command_start: Instant::now(),
         };
 
@@ -328,22 +330,14 @@ impl Watch {
             }
         }
 
-        Ok(())
-    }
+        for _ in rx {
+            kill_process(child);
 
-    fn compare_event(&self, event: &notify::Event, command_start: Instant) -> bool {
-        event.paths.iter().any(|x| {
-            !self.is_excluded_path(x)
-                && x.exists()
-                && !self.is_hidden_path(x)
-                && !self.is_backup_file(x)
-                && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
-                && event.kind
-                    != notify::EventKind::Modify(notify::event::ModifyKind::Name(
-                        notify::event::RenameMode::Any,
-                    ))
-                && command_start.elapsed() >= self.debounce
-        })
+            log::info!("Re-running command");
+            child = command.spawn().expect("cannot spawn command");
+        }
+
+        Ok(())
     }
 
     fn is_excluded_path(&self, path: &Path) -> bool {
@@ -381,10 +375,39 @@ impl Watch {
     }
 }
 
+fn kill_process(mut child: Child) {
+    #[cfg(unix)]
+    {
+        let killing_start = Instant::now();
+
+        unsafe {
+            log::trace!("Killing watch's command process");
+            libc::kill(
+                child.id().try_into().expect("cannot get process id"),
+                libc::SIGTERM,
+            );
+        }
+
+        while killing_start.elapsed().as_secs() < 2 {
+            std::thread::sleep(Duration::from_millis(200));
+            if let Ok(Some(_)) = child.try_wait() {
+                break;
+            }
+        }
+    }
+
+    match child.try_wait() {
+        Ok(Some(_)) => {}
+        _ => {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 struct WatchEventHandler {
     watch: Watch,
-    command: Command,
-    child: Child,
+    tx: Sender<()>,
     command_start: Instant,
 }
 
@@ -392,39 +415,22 @@ impl EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if self.watch.compare_event(&event, self.command_start) {
+                if event.paths.iter().any(|x| {
+                    !self.watch.is_excluded_path(x)
+                        && x.exists()
+                        && !self.watch.is_hidden_path(x)
+                        && !self.watch.is_backup_file(x)
+                        && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
+                        && event.kind
+                            != notify::EventKind::Modify(notify::event::ModifyKind::Name(
+                                notify::event::RenameMode::Any,
+                            ))
+                        && self.command_start.elapsed() >= self.watch.debounce
+                }) {
                     log::trace!("Changes detected in {event:?}");
-                    #[cfg(unix)]
-                    {
-                        let killing_start = Instant::now();
-
-                        unsafe {
-                            log::trace!("Killing watch's command process");
-                            libc::kill(
-                                self.child.id().try_into().expect("cannot get process id"),
-                                libc::SIGTERM,
-                            );
-                        }
-
-                        while killing_start.elapsed().as_secs() < 2 {
-                            std::thread::sleep(Duration::from_millis(200));
-                            if let Ok(Some(_)) = self.child.try_wait() {
-                                break;
-                            }
-                        }
-                    }
-
-                    match self.child.try_wait() {
-                        Ok(Some(_)) => {}
-                        _ => {
-                            let _ = self.child.kill();
-                            let _ = self.child.wait();
-                        }
-                    }
-
-                    log::info!("Re-running command");
-                    self.child = self.command.spawn().expect("cannot spawn command");
                     self.command_start = Instant::now();
+
+                    self.tx.send(()).expect("can send");
                 } else {
                     log::trace!("Ignoring changes in {event:?}");
                 }

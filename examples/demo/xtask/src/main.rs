@@ -3,6 +3,7 @@ use xtask_watch::{anyhow::Result, clap};
 
 #[derive(clap::Parser)]
 enum Opt {
+    #[group(skip)]
     Watch {
         /// Command executed when changes are detected.
         ///
