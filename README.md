@@ -12,7 +12,7 @@
 [crates-url]: https://crates.io/crates/xtask-watch
 [docs-badge]: https://docs.rs/xtask-watch/badge.svg
 [docs-url]: https://docs.rs/xtask-watch/
-[deps-badge]: https://deps.rs/crate/xtask-watch/0.1.6/status.svg
+[deps-badge]: https://deps.rs/repo/github/rustminded/xtask-watch/status.svg
 [deps-url]: https://deps.rs/crate/xtask-watch
 [licenses-badge]: https://img.shields.io/crates/l/xtask-watch
 
