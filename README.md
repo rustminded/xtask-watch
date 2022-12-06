@@ -23,7 +23,7 @@ command when changes are detected in your source code.
 
 This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) struct is intended to be used with the
 [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
-[`clap::Parser`](https://docs.rs/clap/3.0.14/clap/trait.Parser.html) so it can easily be used in
+[`clap::Parser`](https://docs.rs/clap/latest/clap/trait.Parser.html) so it can easily be used in
 your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/master/examples/derive_ref/flatten_hand_args.rs)
 to see how to extend it.
 
