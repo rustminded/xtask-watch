@@ -107,7 +107,7 @@
 //!     match opt {
 //!         Opt::Watch(watch) => {
 //!             log::info!("Starting to watch `cargo check`");
-//!             watch.run(run_command)?;
+//!             watch.run(vec![run_command])?;
 //!         }
 //!     }
 //!
@@ -162,11 +162,14 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
-use std::sync::mpsc::{channel, Sender};
 use std::{
     env,
     path::{Path, PathBuf},
     process::{Child, Command},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
     time::{Duration, Instant},
 };
 
@@ -281,7 +284,9 @@ impl Watch {
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(mut self, mut command: Command) -> Result<()> {
+    pub fn run(mut self, mut commands: Vec<Command>) -> Result<()> {
+        assert!(!commands.is_empty());
+
         let metadata = metadata();
 
         self.exclude_paths
@@ -310,7 +315,9 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut child = command.spawn().context("cannot spawn command")?;
+        let current_child = ShareableChild::new();
+
+        spawn_commands(&mut commands, &current_child);
 
         let (tx, rx) = channel();
 
@@ -331,10 +338,10 @@ impl Watch {
         }
 
         for _ in rx {
-            kill_process(child);
+            current_child.kill();
 
             log::info!("Re-running command");
-            child = command.spawn().expect("cannot spawn command");
+            spawn_commands(&mut commands, &current_child);
         }
 
         Ok(())
@@ -375,32 +382,12 @@ impl Watch {
     }
 }
 
-fn kill_process(mut child: Child) {
-    #[cfg(unix)]
-    {
-        let killing_start = Instant::now();
+fn spawn_commands(commands: &mut [Command], current_child: &ShareableChild) {
+    for process in commands.iter_mut() {
+        current_child.replace(Some(process.spawn().expect("can spawn process")));
 
-        unsafe {
-            log::trace!("Killing watch's command process");
-            libc::kill(
-                child.id().try_into().expect("cannot get process id"),
-                libc::SIGTERM,
-            );
-        }
-
-        while killing_start.elapsed().as_secs() < 2 {
-            std::thread::sleep(Duration::from_millis(200));
-            if let Ok(Some(_)) = child.try_wait() {
-                break;
-            }
-        }
-    }
-
-    match child.try_wait() {
-        Ok(Some(_)) => {}
-        _ => {
-            let _ = child.kill();
-            let _ = child.wait();
+        if !current_child.wait() {
+            break;
         }
     }
 }
@@ -436,6 +423,52 @@ impl EventHandler for WatchEventHandler {
                 }
             }
             Err(err) => log::error!("watch error: {err}"),
+        }
+    }
+}
+
+struct ShareableChild(Arc<Mutex<Option<Child>>>);
+
+impl ShareableChild {
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+
+    fn replace(&self, child: Option<Child>) {
+        let mut guard = self.0.lock().expect("can lock");
+        *guard = child;
+    }
+
+    fn wait(&self) -> bool {
+        let success = loop {
+            match self
+                .0
+                .lock()
+                .expect("can lock")
+                .as_mut()
+                .expect("is some")
+                .try_wait()
+            {
+                Ok(Some(status)) if status.success() => {
+                    break true;
+                }
+                Ok(Some(_status)) => {
+                    break false;
+                }
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
+                Err(err) => println!("cannot wait child process: {err}"),
+            }
+        };
+
+        self.replace(None);
+
+        success
+    }
+
+    fn kill(&self) {
+        if let Some(child) = self.0.lock().expect("can lock").as_mut() {
+            let _ = child.wait();
+            let _ = child.kill();
         }
     }
 }
