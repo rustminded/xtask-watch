@@ -315,7 +315,7 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let current_child = ShareableChild::new();
+        let current_child = SharedChild::new();
 
         spawn_commands(&mut commands, &current_child);
 
@@ -382,7 +382,7 @@ impl Watch {
     }
 }
 
-fn spawn_commands(commands: &mut [Command], current_child: &ShareableChild) {
+fn spawn_commands(commands: &mut [Command], current_child: &SharedChild) {
     for process in commands.iter_mut() {
         current_child.replace(Some(process.spawn().expect("can spawn process")));
 
@@ -427,9 +427,9 @@ impl EventHandler for WatchEventHandler {
     }
 }
 
-struct ShareableChild(Arc<Mutex<Option<Child>>>);
+struct SharedChild(Arc<Mutex<Option<Child>>>);
 
-impl ShareableChild {
+impl SharedChild {
     fn new() -> Self {
         Self(Arc::new(Mutex::new(None)))
     }
@@ -467,8 +467,8 @@ impl ShareableChild {
 
     fn kill(&self) {
         if let Some(child) = self.0.lock().expect("can lock").as_mut() {
-            let _ = child.wait();
             let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }
