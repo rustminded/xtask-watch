@@ -107,7 +107,7 @@
 //!     match opt {
 //!         Opt::Watch(watch) => {
 //!             log::info!("Starting to watch `cargo check`");
-//!             watch.run(vec![run_command])?;
+//!             watch.run(run_command)?;
 //!         }
 //!     }
 //!
@@ -163,13 +163,11 @@ use clap::Parser;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
 use std::{
-    env,
+    env, io,
     path::{Path, PathBuf},
-    process::{Child, Command},
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
+    process::{Child, Command, ExitStatus},
+    sync::{mpsc, Arc, Mutex},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -284,9 +282,8 @@ impl Watch {
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(mut self, mut commands: Vec<Command>) -> Result<()> {
-        assert!(!commands.is_empty());
-
+    pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
+        let commands = commands.into();
         let metadata = metadata();
 
         self.exclude_paths
@@ -315,11 +312,7 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let current_child = SharedChild::new();
-
-        spawn_commands(&mut commands, &current_child);
-
-        let (tx, rx) = channel();
+        let (tx, rx) = mpsc::channel();
 
         let handler = WatchEventHandler {
             watch: self.clone(),
@@ -337,11 +330,31 @@ impl Watch {
             }
         }
 
-        for _ in rx {
-            current_child.kill();
+        let mut current_child = SharedChild::new();
+        loop {
+            {
+                log::info!("Re-running command");
+                let mut current_child = current_child.clone();
+                let mut commands = commands.clone();
+                thread::spawn(move || {
+                    commands.spawn(move |res| match res {
+                        Err(err) => {
+                            log::error!("command failed: {err}");
+                            false
+                        }
+                        Ok(child) => {
+                            current_child.replace(child);
+                            current_child.wait().success()
+                        }
+                    });
+                });
+            }
 
-            log::info!("Re-running command");
-            spawn_commands(&mut commands, &current_child);
+            let res = rx.recv();
+            current_child.terminate();
+            if res.is_err() {
+                break;
+            }
         }
 
         Ok(())
@@ -382,19 +395,9 @@ impl Watch {
     }
 }
 
-fn spawn_commands(commands: &mut [Command], current_child: &SharedChild) {
-    for process in commands.iter_mut() {
-        current_child.replace(Some(process.spawn().expect("can spawn process")));
-
-        if !current_child.wait() {
-            break;
-        }
-    }
-}
-
 struct WatchEventHandler {
     watch: Watch,
-    tx: Sender<()>,
+    tx: mpsc::Sender<()>,
     command_start: Instant,
 }
 
@@ -427,48 +430,117 @@ impl EventHandler for WatchEventHandler {
     }
 }
 
-struct SharedChild(Arc<Mutex<Option<Child>>>);
+#[derive(Debug, Clone)]
+struct SharedChild {
+    child: Arc<Mutex<Option<Child>>>,
+}
 
 impl SharedChild {
     fn new() -> Self {
-        Self(Arc::new(Mutex::new(None)))
+        Self {
+            child: Default::default(),
+        }
     }
 
-    fn replace(&self, child: Option<Child>) {
-        let mut guard = self.0.lock().expect("can lock");
-        *guard = child;
+    fn replace(&mut self, child: impl Into<Option<Child>>) {
+        *self.child.lock().expect("not poisoned") = child.into();
     }
 
-    fn wait(&self) -> bool {
-        let success = loop {
-            match self
-                .0
-                .lock()
-                .expect("can lock")
-                .as_mut()
-                .expect("is some")
-                .try_wait()
+    fn wait(&mut self) -> ExitStatus {
+        self.child
+            .lock()
+            .expect("not poisoned")
+            .as_mut()
+            .map(|child| {
+                let status = loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            break status;
+                        }
+                        Ok(None) => thread::sleep(Duration::from_millis(10)),
+                        Err(err) => println!("cannot wait child process: {err}"),
+                    }
+                };
+
+                status
+            })
+            .unwrap_or_default()
+    }
+
+    fn terminate(&mut self) {
+        if let Some(child) = self.child.lock().expect("not poisoned").as_mut() {
+            #[cfg(unix)]
             {
-                Ok(Some(status)) if status.success() => {
-                    break true;
+                let killing_start = Instant::now();
+
+                unsafe {
+                    log::trace!("Killing watch's command process");
+                    libc::kill(child.id() as _, libc::SIGTERM);
                 }
-                Ok(Some(_status)) => {
-                    break false;
+
+                while killing_start.elapsed().as_secs() < 2 {
+                    std::thread::sleep(Duration::from_millis(200));
+                    if let Ok(Some(_)) = child.try_wait() {
+                        break;
+                    }
                 }
-                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
-                Err(err) => println!("cannot wait child process: {err}"),
             }
-        };
 
-        self.replace(None);
+            match child.try_wait() {
+                Ok(Some(_)) => {}
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+    }
+}
 
-        success
+/// A list of commands to run.
+#[derive(Debug, Clone)]
+pub struct CommandList {
+    commands: Arc<Mutex<Vec<Command>>>,
+}
+
+impl From<Command> for CommandList {
+    fn from(command: Command) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(vec![command])),
+        }
+    }
+}
+
+impl From<Vec<Command>> for CommandList {
+    fn from(commands: Vec<Command>) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(commands)),
+        }
+    }
+}
+
+impl<const SIZE: usize> From<[Command; SIZE]> for CommandList {
+    fn from(commands: [Command; SIZE]) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(Vec::from(commands))),
+        }
+    }
+}
+
+impl CommandList {
+    /// Returns `true` if the list is empty.
+    pub fn is_empty(&self) -> bool {
+        self.commands.lock().expect("not poisoned").is_empty()
     }
 
-    fn kill(&self) {
-        if let Some(child) = self.0.lock().expect("can lock").as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
+    /// Spawn each command of the list one after the other.
+    ///
+    /// The caller is responsible to wait the commands.
+    pub fn spawn(&mut self, mut callback: impl FnMut(io::Result<Child>) -> bool) {
+        for process in self.commands.lock().expect("not poisoned").iter_mut() {
+            if !callback(process.spawn()) {
+                break;
+            }
         }
     }
 }
@@ -494,5 +566,12 @@ mod test {
                 .as_std_path()
         ));
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
+    }
+
+    #[test]
+    fn command_list_froms() {
+        let _: CommandList = Command::new("foo").into();
+        let _: CommandList = vec![Command::new("foo")].into();
+        let _: CommandList = [Command::new("foo")].into();
     }
 }

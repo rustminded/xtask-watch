@@ -2,6 +2,7 @@
 name = "xtask-watch"
 version = "0.1.6"
 edition = "2021"
+rust-version = "1.73"
 license = "MIT OR Apache-2.0"
 description = "A customizable helper to watch for changes in your projects using xtask."
 homepage = "https://github.com/rustminded/xtask-wasm"
