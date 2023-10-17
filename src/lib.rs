@@ -343,14 +343,26 @@ impl Watch {
                             false
                         }
                         Ok(child) => {
+                            log::trace!("new child: {}", child.id());
                             current_child.replace(child);
-                            current_child.wait().success()
+                            let status = current_child.wait();
+                            if status.success() {
+                                true
+                            } else if let Some(code) = status.code() {
+                                log::error!("command failed: {:?}", code);
+                                false
+                            } else {
+                                false
+                            }
                         }
                     });
                 });
             }
 
             let res = rx.recv();
+            if res.is_ok() {
+                log::trace!("changes detected");
+            }
             current_child.terminate();
             if res.is_err() {
                 break;
@@ -447,24 +459,25 @@ impl SharedChild {
     }
 
     fn wait(&mut self) -> ExitStatus {
-        self.child
-            .lock()
-            .expect("not poisoned")
-            .as_mut()
-            .map(|child| {
-                let status = loop {
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            break status;
-                        }
-                        Ok(None) => thread::sleep(Duration::from_millis(10)),
-                        Err(err) => println!("cannot wait child process: {err}"),
-                    }
-                };
-
-                status
-            })
-            .unwrap_or_default()
+        loop {
+            let mut child = self.child.lock().expect("not poisoned");
+            match child.as_mut().map(|child| child.try_wait()) {
+                Some(Ok(Some(status))) => {
+                    break status;
+                }
+                Some(Ok(None)) => {
+                    drop(child);
+                    thread::sleep(Duration::from_millis(10));
+                }
+                Some(Err(err)) => {
+                    log::error!("could not wait for child process: {err}");
+                    break Default::default();
+                }
+                None => {
+                    break Default::default();
+                }
+            }
+        }
     }
 
     fn terminate(&mut self) {
@@ -474,7 +487,7 @@ impl SharedChild {
                 let killing_start = Instant::now();
 
                 unsafe {
-                    log::trace!("Killing watch's command process");
+                    log::trace!("sending SIGTERM to {}", child.id());
                     libc::kill(child.id() as _, libc::SIGTERM);
                 }
 
@@ -489,10 +502,13 @@ impl SharedChild {
             match child.try_wait() {
                 Ok(Some(_)) => {}
                 _ => {
+                    log::trace!("killing {}", child.id());
                     let _ = child.kill();
                     let _ = child.wait();
                 }
             }
+        } else {
+            log::trace!("nothing to terminate");
         }
     }
 }
