@@ -25,22 +25,27 @@ fn main() -> Result<()> {
 
     match opt {
         Opt::Watch { command, watch } => {
-            let command = if !command.is_empty() {
+            log::info!("starting to watch");
+            if !command.is_empty() {
                 let mut it = command.iter();
 
                 let mut command = Command::new(it.next().unwrap());
                 command.args(it);
 
-                command
+                watch.run(command)?;
             } else {
-                let mut command = Command::new("cargo");
-                command.arg("check");
+                let mut check = Command::new("cargo");
+                check.arg("check");
 
-                command
-            };
+                let mut test = Command::new("cargo");
+                test.arg("test");
 
-            log::info!("starting to watch");
-            watch.run(command)?;
+                let mut sleep = Command::new("bash");
+                sleep.arg("-c");
+                sleep.arg("echo sleeping for 10 seconds...; sleep 10; echo sleep ended");
+
+                watch.run([check, test, sleep])?;
+            }
         }
     }
 

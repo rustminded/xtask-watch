@@ -6,7 +6,7 @@
 [![dependencies status][deps-badge]][deps-url]
 ![licenses][licenses-badge]
 
-[actions-badge]: https://github.com/rustminded/xtask-watch/workflows/main/badge.svg
+[actions-badge]: https://github.com/rustminded/xtask-watch/workflows/rust/badge.svg
 [actions-url]: https://github.com/rustminded/xtask-watch/actions
 [crates-version-badge]: https://img.shields.io/crates/v/xtask-watch
 [crates-url]: https://crates.io/crates/xtask-watch
