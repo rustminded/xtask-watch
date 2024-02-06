@@ -87,7 +87,7 @@
 //! ## A basic implementation
 //!
 //! ```rust,no_run
-//! use std::process::{Command, ExitStatus};
+//! use std::process::Command;
 //! use xtask_watch::{
 //!     anyhow::Result,
 //!     clap,
