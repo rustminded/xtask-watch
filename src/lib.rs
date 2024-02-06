@@ -560,15 +560,16 @@ impl CommandList {
         }
     }
 
-    /// Run all the commands sequentially and stop at the first failure.
-    pub fn run(&mut self) -> io::Result<Option<ExitStatus>> {
+    /// Run all the commands sequentially using [`std::process::Command::status`] and stop at the
+    /// first failure.
+    pub fn status(&mut self) -> io::Result<ExitStatus> {
         for process in self.commands.lock().expect("not poisoned").iter_mut() {
             let exit_status = process.status()?;
             if !exit_status.success() {
-                return Ok(Some(exit_status));
+                return Ok(exit_status);
             }
         }
-        Ok(None)
+        Ok(Default::default())
     }
 }
 
