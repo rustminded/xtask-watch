@@ -347,11 +347,7 @@ impl Watch {
                             log::trace!("new child: {}", child.id());
                             current_child.replace(child);
                             status = current_child.wait();
-                            if status.success() {
-                                true
-                            } else {
-                                false
-                            }
+                            status.success()
                         }
                     });
                     if status.success() {
