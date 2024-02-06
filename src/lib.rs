@@ -87,7 +87,7 @@
 //! ## A basic implementation
 //!
 //! ```rust,no_run
-//! use std::process::Command;
+//! use std::process::{Command, ExitStatus};
 //! use xtask_watch::{
 //!     anyhow::Result,
 //!     clap,
@@ -558,6 +558,17 @@ impl CommandList {
                 break;
             }
         }
+    }
+
+    /// Run all the commands sequentially and stop at the first failure.
+    pub fn run(&mut self) -> io::Result<Option<ExitStatus>> {
+        for process in self.commands.lock().expect("not poisoned").iter_mut() {
+            let exit_status = process.status()?;
+            if !exit_status.success() {
+                return Ok(Some(exit_status));
+            }
+        }
+        Ok(None)
     }
 }
 
