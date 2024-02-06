@@ -4,3 +4,4 @@ members = [
     "my-project",
     "xtask",
 ]
+resolver = "2"

@@ -25,7 +25,7 @@ fn main() -> Result<()> {
 
     match opt {
         Opt::Watch { command, watch } => {
-            log::info!("starting to watch");
+            log::info!("Starting to watch");
             if !command.is_empty() {
                 let mut it = command.iter();
 
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
                 let mut sleep = Command::new("bash");
                 sleep.arg("-c");
-                sleep.arg("echo sleeping for 10 seconds...; sleep 10; echo sleep ended");
+                sleep.arg("set -e; echo sleeping for 10 seconds...; sleep 10; echo sleep ended");
 
                 watch.run([check, test, sleep])?;
             }

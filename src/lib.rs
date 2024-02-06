@@ -337,25 +337,30 @@ impl Watch {
                 let mut current_child = current_child.clone();
                 let mut commands = commands.clone();
                 thread::spawn(move || {
-                    commands.spawn(move |res| match res {
+                    let mut status = ExitStatus::default();
+                    commands.spawn(|res| match res {
                         Err(err) => {
-                            log::error!("command failed: {err}");
+                            log::error!("Could not execute command: {err}");
                             false
                         }
                         Ok(child) => {
                             log::trace!("new child: {}", child.id());
                             current_child.replace(child);
-                            let status = current_child.wait();
+                            status = current_child.wait();
                             if status.success() {
                                 true
-                            } else if let Some(code) = status.code() {
-                                log::error!("command failed: {:?}", code);
-                                false
                             } else {
                                 false
                             }
                         }
                     });
+                    if status.success() {
+                        log::info!("Command succeeded.");
+                    } else if let Some(code) = status.code() {
+                        log::error!("Command failed (exit code: {code})");
+                    } else {
+                        log::error!("Command failed.");
+                    }
                 });
             }
 
