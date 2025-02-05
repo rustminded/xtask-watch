@@ -292,7 +292,24 @@ impl Watch {
     /// Workspace's `target` directory and hidden paths are excluded by default.
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
         let metadata = metadata();
-        let commands = self.include_commands(commands);
+        let list = commands.into();
+        let commands = list.commands.lock().expect("not poisoned");
+
+        commands.extend(self.shell_commands.iter().map(|x| {
+            let mut command = Command::new("/bin/sh");
+            command.arg("-c");
+            command.arg(x);
+
+            command
+        }));
+
+        commands.extend(self.cargo_commands.iter().map(|x| {
+            let mut command = Command::new("/bin/sh");
+            command.arg("-c");
+            command.arg(format!("cargo {x}"));
+
+            command
+        }));
 
         self.exclude_paths
             .push(metadata.target_directory.clone().into_std_path_buf());
@@ -561,7 +578,7 @@ impl SharedChild {
 }
 
 /// A list of commands to run.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct CommandList {
     commands: Arc<Mutex<Vec<Command>>>,
 }
@@ -617,11 +634,6 @@ impl CommandList {
             }
         }
         Ok(Default::default())
-    }
-
-    /// Moves all the elements of `other` into `self`, leaving `other` empty.
-    fn append(&mut self, other: &mut Vec<Command>) {
-        self.commands.lock().expect("not poisoned").append(other)
     }
 }
 
