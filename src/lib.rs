@@ -297,7 +297,8 @@ impl Watch {
         let mut commands = list.commands.lock().expect("not poisoned");
 
         commands.extend(self.shell_commands.iter().map(|x| {
-            let mut command = Command::new("/bin/sh");
+            let mut command =
+                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
             command.arg("-c");
             command.arg(x);
 
@@ -305,7 +306,8 @@ impl Watch {
         }));
 
         commands.extend(self.cargo_commands.iter().map(|x| {
-            let mut command = Command::new("/bin/sh");
+            let mut command =
+                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
             command.arg("-c");
             command.arg(format!("cargo {x}"));
 
