@@ -203,6 +203,14 @@ pub fn xtask_command() -> Command {
 #[derive(Clone, Debug, Default, Parser)]
 #[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
+    /// Shell command(s) to execute on changes.
+    #[clap(long = "shell", short = 's')]
+    pub shell_commands: Vec<String>,
+    /// Cargo command(s) to execute on changes.
+    ///
+    /// The default is `[ check ]`
+    #[clap(long = "exec", short = 'x', default_values = ["check"])]
+    pub cargo_commands: Vec<String>,
     /// Watch specific file(s) or folder(s).
     ///
     /// The default is the workspace root.
@@ -283,8 +291,8 @@ impl Watch {
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
-        let commands = commands.into();
         let metadata = metadata();
+        let commands = self.include_commands(commands);
 
         self.exclude_paths
             .push(metadata.target_directory.clone().into_std_path_buf());
@@ -406,6 +414,44 @@ impl Watch {
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
     }
+
+    fn include_commands(&self, list: impl Into<CommandList>) -> CommandList {
+        let mut list = list.into();
+
+        if !self.shell_commands.is_empty() {
+            list.append(
+                &mut self
+                    .shell_commands
+                    .iter()
+                    .map(|x| {
+                        let mut command = Command::new("/bin/sh");
+                        command.arg("-c");
+                        command.arg(x);
+
+                        command
+                    })
+                    .collect(),
+            );
+        }
+
+        if !self.cargo_commands.is_empty() {
+            list.append(
+                &mut self
+                    .cargo_commands
+                    .iter()
+                    .map(|x| {
+                        let mut command = Command::new("/bin/sh");
+                        command.arg("-c");
+                        command.arg(format!("cargo {x}"));
+
+                        command
+                    })
+                    .collect(),
+            )
+        }
+
+        list
+    }
 }
 
 struct WatchEventHandler {
@@ -515,7 +561,7 @@ impl SharedChild {
 }
 
 /// A list of commands to run.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Default)]
 pub struct CommandList {
     commands: Arc<Mutex<Vec<Command>>>,
 }
@@ -572,6 +618,11 @@ impl CommandList {
         }
         Ok(Default::default())
     }
+
+    /// Moves all the elements of `other` into `self`, leaving `other` empty.
+    fn append(&mut self, other: &mut Vec<Command>) {
+        self.commands.lock().expect("not poisoned").append(other)
+    }
 }
 
 #[cfg(test)]
@@ -581,6 +632,8 @@ mod test {
     #[test]
     fn exclude_relative_path() {
         let watch = Watch {
+            shell_commands: Vec::new(),
+            cargo_commands: vec!["check".to_string()],
             debounce: Default::default(),
             watch_paths: Vec::new(),
             exclude_paths: Vec::new(),
