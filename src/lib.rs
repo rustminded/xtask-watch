@@ -541,7 +541,7 @@ impl SharedChild {
 }
 
 /// A list of commands to run.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct CommandList {
     commands: Arc<Mutex<Vec<Command>>>,
 }
@@ -608,7 +608,7 @@ mod test {
     fn exclude_relative_path() {
         let watch = Watch {
             shell_commands: Vec::new(),
-            cargo_commands: vec!["check".to_string()],
+            cargo_commands: Vec::new(),
             debounce: Default::default(),
             watch_paths: Vec::new(),
             exclude_paths: Vec::new(),
