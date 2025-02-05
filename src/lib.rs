@@ -293,7 +293,8 @@ impl Watch {
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
         let metadata = metadata();
         let list = commands.into();
-        let commands = list.commands.lock().expect("not poisoned");
+
+        let mut commands = list.commands.lock().expect("not poisoned");
 
         commands.extend(self.shell_commands.iter().map(|x| {
             let mut command = Command::new("/bin/sh");
@@ -360,7 +361,7 @@ impl Watch {
             {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
-                let mut commands = commands.clone();
+                let mut commands = list.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
                     commands.spawn(|res| match res {
@@ -430,44 +431,6 @@ impl Watch {
                 .iter()
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
-    }
-
-    fn include_commands(&self, list: impl Into<CommandList>) -> CommandList {
-        let mut list = list.into();
-
-        if !self.shell_commands.is_empty() {
-            list.append(
-                &mut self
-                    .shell_commands
-                    .iter()
-                    .map(|x| {
-                        let mut command = Command::new("/bin/sh");
-                        command.arg("-c");
-                        command.arg(x);
-
-                        command
-                    })
-                    .collect(),
-            );
-        }
-
-        if !self.cargo_commands.is_empty() {
-            list.append(
-                &mut self
-                    .cargo_commands
-                    .iter()
-                    .map(|x| {
-                        let mut command = Command::new("/bin/sh");
-                        command.arg("-c");
-                        command.arg(format!("cargo {x}"));
-
-                        command
-                    })
-                    .collect(),
-            )
-        }
-
-        list
     }
 }
 
