@@ -203,6 +203,14 @@ pub fn xtask_command() -> Command {
 #[derive(Clone, Debug, Default, Parser)]
 #[clap(about = "Watches over your project's source code.")]
 pub struct Watch {
+    /// Shell command(s) to execute on changes.
+    #[clap(long = "shell", short = 's')]
+    pub shell_commands: Vec<String>,
+    /// Cargo command(s) to execute on changes.
+    ///
+    /// The default is `[ check ]`
+    #[clap(long = "exec", short = 'x', default_values = ["check"])]
+    pub cargo_commands: Vec<String>,
     /// Watch specific file(s) or folder(s).
     ///
     /// The default is the workspace root.
@@ -283,8 +291,28 @@ impl Watch {
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
-        let commands = commands.into();
         let metadata = metadata();
+        let list = commands.into();
+
+        let mut commands = list.commands.lock().expect("not poisoned");
+
+        commands.extend(self.shell_commands.iter().map(|x| {
+            let mut command =
+                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
+            command.arg("-c");
+            command.arg(x);
+
+            command
+        }));
+
+        commands.extend(self.cargo_commands.iter().map(|x| {
+            let mut command =
+                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
+            command.arg("-c");
+            command.arg(format!("cargo {x}"));
+
+            command
+        }));
 
         self.exclude_paths
             .push(metadata.target_directory.clone().into_std_path_buf());
@@ -335,7 +363,7 @@ impl Watch {
             {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
-                let mut commands = commands.clone();
+                let mut commands = list.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
                     commands.spawn(|res| match res {
@@ -581,6 +609,8 @@ mod test {
     #[test]
     fn exclude_relative_path() {
         let watch = Watch {
+            shell_commands: Vec::new(),
+            cargo_commands: Vec::new(),
             debounce: Default::default(),
             watch_paths: Vec::new(),
             exclude_paths: Vec::new(),
