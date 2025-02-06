@@ -19,7 +19,7 @@ jobs:
           - macos-latest
         rust:
           - stable
-          - 1.73.0 # MSRV
+          - 1.78.0 # MSRV
         include:
           - os: ubuntu-latest
             rust: stable
@@ -27,32 +27,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ matrix.rust }}
-          default: true
-          override: true
+      - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v1
 
+      - name: cargo check
+        run: cargo check
+
+      - name: cargo build
+        run: cargo build
+
       - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --all-features
+        run: cargo test
 
       - name: rustfmt
         if: github.event_name == 'pull_request' && matrix.lint
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+        run: cargo fmt --all -- --check
 
       - name: clippy
         if: github.event_name == 'pull_request' && matrix.lint
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all --tests --all-features -- -D warnings
+        run: cargo clippy --all --tests -- -D warnings
