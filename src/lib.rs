@@ -209,7 +209,7 @@ pub struct Watch {
     /// Cargo command(s) to execute on changes.
     ///
     /// The default is `[ check ]`
-    #[clap(long = "exec", short = 'x', default_values = ["check"])]
+    #[clap(long = "exec", short = 'x')]
     pub cargo_commands: Vec<String>,
     /// Watch specific file(s) or folder(s).
     ///
