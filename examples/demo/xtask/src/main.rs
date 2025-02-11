@@ -5,10 +5,17 @@ use xtask_watch::{anyhow::Result, clap};
 enum Opt {
     #[group(skip)]
     Watch {
-        /// Command executed when changes are detected.
-        ///
-        /// If nothing is provided, `cargo check` will be executed.
-        command: Vec<String>,
+        /// Run cargo check.
+        #[arg(long)]
+        check: bool,
+
+        /// Run cargo test.
+        #[arg(long)]
+        test: bool,
+
+        /// Run cargo clippy.
+        #[arg(long)]
+        clippy: bool,
 
         #[clap(flatten)]
         watch: xtask_watch::Watch,
@@ -24,28 +31,35 @@ fn main() -> Result<()> {
         .init();
 
     match opt {
-        Opt::Watch { command, watch } => {
+        Opt::Watch { check, test, clippy, watch } => {
             log::info!("Starting to watch");
-            if !command.is_empty() {
-                let mut it = command.iter();
+            let mut list = Vec::with_capacity(10);
 
-                let mut command = Command::new(it.next().unwrap());
-                command.args(it);
-
-                watch.run(command)?;
-            } else {
+            if check {
                 let mut check = Command::new("cargo");
-                check.arg("check");
-
-                let mut test = Command::new("cargo");
-                test.arg("test");
-
-                let mut sleep = Command::new("bash");
-                sleep.arg("-c");
-                sleep.arg("set -e; echo sleeping for 10 seconds...; sleep 10; echo sleep ended");
-
-                watch.run([check, test, sleep])?;
+                check.args(["check", "--workspace"]);
+                list.push(check);
             }
+
+            if test {
+                let mut test = Command::new("cargo");
+                test.args(["test", "--workspace"]);
+                list.push(test);
+            }
+
+            if clippy {
+                let mut clippy = Command::new("cargo");
+                clippy.args(["clippy", "--workspace"]);
+                list.push(clippy);
+            }
+
+            let mut sleep = Command::new("bash");
+            sleep.arg("-c");
+            sleep.arg("echo sleeping for 10 seconds for testing purposes... don't mind me; \
+                sleep 10; echo sleep ended");
+            list.push(sleep);
+
+            watch.run(list)?;
         }
     }
 

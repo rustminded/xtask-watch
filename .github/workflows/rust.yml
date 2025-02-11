@@ -22,7 +22,7 @@ jobs:
           - 1.78.0 # MSRV
         include:
           - os: ubuntu-latest
-            rust: stable
+            rust: 1.78.0
             lint: 1
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,8 +30,6 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v1
 
       - name: cargo check
         run: cargo check
