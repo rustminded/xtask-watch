@@ -294,25 +294,27 @@ impl Watch {
         let metadata = metadata();
         let list = commands.into();
 
-        let mut commands = list.commands.lock().expect("not poisoned");
+        {
+            let mut commands = list.commands.lock().expect("not poisoned");
 
-        commands.extend(self.shell_commands.iter().map(|x| {
-            let mut command =
-                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
-            command.arg("-c");
-            command.arg(x);
+            commands.extend(self.shell_commands.iter().map(|x| {
+                let mut command =
+                    Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
+                command.arg("-c");
+                command.arg(x);
 
-            command
-        }));
+                command
+            }));
 
-        commands.extend(self.cargo_commands.iter().map(|x| {
-            let mut command =
-                Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
-            command.arg("-c");
-            command.arg(format!("cargo {x}"));
+            commands.extend(self.cargo_commands.iter().map(|x| {
+                let mut command =
+                    Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
+                command.arg("-c");
+                command.arg(format!("cargo {x}"));
 
-            command
-        }));
+                command
+            }));
+        }
 
         self.exclude_paths
             .push(metadata.target_directory.clone().into_std_path_buf());
@@ -363,10 +365,10 @@ impl Watch {
             {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
-                let mut commands = list.clone();
+                let mut list = list.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
-                    commands.spawn(|res| match res {
+                    list.spawn(|res| match res {
                         Err(err) => {
                             log::error!("Could not execute command: {err}");
                             false
