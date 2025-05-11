@@ -392,7 +392,7 @@ impl Watch {
 
             let res = rx.recv();
             if res.is_ok() {
-                log::trace!("changes detected");
+                log::trace!("Changes detected, re-generating");
             }
             current_child.terminate();
             if res.is_err() {
@@ -448,18 +448,15 @@ impl EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if event.paths.iter().any(|x| {
-                    !self.watch.is_excluded_path(x)
-                        && x.exists()
-                        && !self.watch.is_hidden_path(x)
-                        && !self.watch.is_backup_file(x)
-                        && event.kind != notify::EventKind::Create(notify::event::CreateKind::Any)
-                        && event.kind
-                            != notify::EventKind::Modify(notify::event::ModifyKind::Name(
-                                notify::event::RenameMode::Any,
-                            ))
-                        && self.command_start.elapsed() >= self.watch.debounce
-                }) {
+                if (event.kind.is_modify() || event.kind.is_create() || event.kind.is_create())
+                    && event.paths.iter().any(|x| {
+                        !self.watch.is_excluded_path(x)
+                            && x.exists()
+                            && !self.watch.is_hidden_path(x)
+                            && !self.watch.is_backup_file(x)
+                            && self.command_start.elapsed() >= self.watch.debounce
+                    })
+                {
                     log::trace!("Changes detected in {event:?}");
                     self.command_start = Instant::now();
 
