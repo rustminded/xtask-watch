@@ -167,7 +167,7 @@ use std::{
     env, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -665,13 +665,15 @@ mod test {
             .workspace_exclude_paths
             .push(PathBuf::from("src/watch.rs"));
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("watch.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("watch.rs")
+                    .as_std_path()
+            )
+        );
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
     }
 
@@ -688,13 +690,15 @@ mod test {
             .exclude_globs
             .push(Pattern::new(absolute.as_ref()).expect("valid glob"));
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
@@ -704,13 +708,15 @@ mod test {
             .workspace_exclude_globs
             .push(Pattern::new("src/**/*.rs").expect("valid glob"));
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
@@ -720,13 +726,15 @@ mod test {
             .workspace_exclude_globs
             .push(Pattern::new("tests/**/*.rs").expect("valid glob"));
 
-        assert!(!watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            !watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
