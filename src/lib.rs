@@ -88,10 +88,12 @@
 //!
 //! ```rust,no_run
 //! use std::process::Command;
-//! use xtask_watch::{
-//!     anyhow::Result,
-//!     clap,
-//! };
+//!
+//! #[cfg(feature = "anyhow")]
+//! use xtask_watch::anyhow::Result;
+//! #[cfg(feature = "eyre")]
+//! use xtask_watch::eyre::Result;
+//! use xtask_watch::clap;
 //!
 //! #[derive(clap::Parser)]
 //! enum Opt {
@@ -158,7 +160,16 @@
 
 #![deny(missing_docs)]
 
+#[cfg(all(feature = "anyhow", feature = "eyre"))]
+compile_error!("features `anyhow` and `eyre` are mutually exclusive; enable only one");
+#[cfg(not(any(feature = "anyhow", feature = "eyre")))]
+compile_error!("enable one of the following features: `anyhow` or `eyre`");
+
+#[cfg(feature = "anyhow")]
 use anyhow::{Context, Result};
+#[cfg(feature = "eyre")]
+use eyre::{Result, WrapErr};
+
 use clap::Parser;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
@@ -171,7 +182,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(feature = "anyhow")]
 pub use anyhow;
+#[cfg(feature = "eyre")]
+pub use eyre;
+
 pub use cargo_metadata;
 pub use cargo_metadata::camino;
 pub use clap;
@@ -323,8 +338,16 @@ impl Watch {
             .exclude_paths
             .into_iter()
             .map(|x| {
-                x.canonicalize()
-                    .with_context(|| format!("can't find {}", x.display()))
+                #[cfg(feature = "anyhow")]
+                {
+                    x.canonicalize()
+                        .with_context(|| format!("can't find {}", x.display()))
+                }
+                #[cfg(feature = "eyre")]
+                {
+                    x.canonicalize()
+                        .wrap_err_with(|| format!("can't find {}", x.display()))
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -337,8 +360,16 @@ impl Watch {
             .watch_paths
             .into_iter()
             .map(|x| {
-                x.canonicalize()
-                    .with_context(|| format!("can't find {}", x.display()))
+                #[cfg(feature = "anyhow")]
+                {
+                    x.canonicalize()
+                        .with_context(|| format!("can't find {}", x.display()))
+                }
+                #[cfg(feature = "eyre")]
+                {
+                    x.canonicalize()
+                        .wrap_err_with(|| format!("can't find {}", x.display()))
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -350,8 +381,16 @@ impl Watch {
             command_start: Instant::now(),
         };
 
-        let mut watcher =
-            notify::recommended_watcher(handler).context("could not initialize watcher")?;
+        let mut watcher = {
+            #[cfg(feature = "anyhow")]
+            {
+                notify::recommended_watcher(handler).context("could not initialize watcher")?
+            }
+            #[cfg(feature = "eyre")]
+            {
+                notify::recommended_watcher(handler).wrap_err("could not initialize watcher")?
+            }
+        };
 
         for path in &self.watch_paths {
             match watcher.watch(path, RecursiveMode::Recursive) {
