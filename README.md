@@ -107,12 +107,13 @@ By default, `xtask-watch` uses [anyhow][anyhow] as error backend. If you want to
 ```toml
 [dependencies]
 xtask-watch = { version = "0.3", default-features = false, features = ["eyre"] }
+```
 
-# Examples
+## Examples
 
-## A basic implementation
+### A basic implementation
 
-```rust,no_run
+```rust
 use std::process::Command;
 
 #[cfg(feature = "anyhow")]

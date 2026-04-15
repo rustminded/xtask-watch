@@ -87,6 +87,7 @@
 //! ```toml
 //! [dependencies]
 //! xtask-watch = { version = "0.3", default-features = false, features = ["eyre"] }
+//! ```
 //!
 //! # Examples
 //!
