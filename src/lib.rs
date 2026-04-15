@@ -183,7 +183,7 @@ use std::{
     env, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -661,13 +661,15 @@ mod test {
             workspace_exclude_paths: vec![PathBuf::from("src/watch.rs")],
         };
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("watch.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("watch.rs")
+                    .as_std_path()
+            )
+        );
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
     }
 
