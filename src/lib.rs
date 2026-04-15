@@ -339,7 +339,7 @@ impl Watch {
             } else {
                 let canonical = path
                     .canonicalize()
-                    .with_context(|| format!("failed to  `{}`", path.display()))?;
+                    .with_context(|| format!("can't find `{}`", path.display()))?;
                 exclude_paths.push(canonical);
             }
         }
@@ -366,7 +366,7 @@ impl Watch {
             .into_iter()
             .map(|x| {
                 x.canonicalize()
-                    .with_context(|| format!("failed to find {}", x.display()))
+                    .with_context(|| format!("can't find {}", x.display()))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
