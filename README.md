@@ -18,19 +18,19 @@
 
 <!-- cargo-rdme start -->
 
-This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command, re-launching the
-command when changes are detected in your source code.
+This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command,
+re-launching the command when changes are detected in your source code.
 
 This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) struct is intended to be used with the
 [xtask concept](https://github.com/matklad/cargo-xtask/) and implements
-[`clap::Parser`](https://docs.rs/clap/latest/clap/trait.Parser.html) so it can easily be used in
-your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/master/examples/derive_ref/flatten_hand_args.rs)
+[`clap::Parser`](https://docs.rs/clap/latest/clap/trait.Parser.html) so it
+can easily be used in your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/master/examples/derive_ref/flatten_hand_args.rs)
 to see how to extend it.
 
 ## Setup
 
-The best way to add xtask-watch to your project is to create a workspace with two packages:
-your project's package and the xtask package.
+The best way to add xtask-watch to your project is to create a workspace
+with two packages: your project's package and the xtask package.
 
 ### Create a project using xtask
 
@@ -99,19 +99,27 @@ Finally, add the following to the xtask package's Cargo.toml:
 
 ```toml
 [dependencies]
-xtask-watch = "0.1.0"
+xtask-watch = "0.3"
 ```
 
-## Examples
+By default, `xtask-watch` uses [anyhow][anyhow] as error backend. If you want to use
+[eyre][eyre], you can use the following instead:
+```toml
+[dependencies]
+xtask-watch = { version = "0.3", default-features = false, features = ["eyre"] }
 
-### A basic implementation
+# Examples
 
-```rust
+## A basic implementation
+
+```rust,no_run
 use std::process::Command;
-use xtask_watch::{
-    anyhow::Result,
-    clap,
-};
+
+#[cfg(feature = "anyhow")]
+use xtask_watch::anyhow::Result;
+#[cfg(feature = "eyre")]
+use xtask_watch::eyre::Result;
+use xtask_watch::clap;
 
 #[derive(clap::Parser)]
 enum Opt {
@@ -137,9 +145,10 @@ fn main() -> Result<()> {
 
 ### A more complex demonstration
 
-[`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
-implementation of xtask-watch that naively parse a command given by the user
-(or use `cargo check` by default) and watch the workspace after launching this command.
+[`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo)
+provides an implementation of xtask-watch that naively parse a command given
+by the user (or use `cargo check` by default) and watch the workspace after
+launching this command.
 
 ## Troubleshooting
 
@@ -160,17 +169,19 @@ This occurs because you need to import clap in the scope too. This error can
 be resolved like this:
 
 ```rust
-use xtask_wasm::clap;
+use xtask_watch::clap;
 
 #[derive(clap::Parser)]
+struct MyStruct {}
 ```
 
 Or like this:
 
 ```rust
-use xtask_wasm::{clap, clap::Parser};
+use xtask_watch::{clap, clap::Parser};
 
 #[derive(Parser)]
+struct MyStruct {}
 ```
 
 <!-- cargo-rdme end -->

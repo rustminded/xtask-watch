@@ -79,8 +79,14 @@
 //!
 //! ```toml
 //! [dependencies]
-//! xtask-watch = "0.1.0"
+//! xtask-watch = "0.3"
 //! ```
+//!
+//! By default, `xtask-watch` uses [anyhow][anyhow] as error backend. If you want to use
+//! [eyre][eyre], you can use the following instead:
+//! ```toml
+//! [dependencies]
+//! xtask-watch = { version = "0.3", default-features = false, features = ["eyre"] }
 //!
 //! # Examples
 //!
