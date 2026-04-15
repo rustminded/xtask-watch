@@ -344,18 +344,7 @@ impl Watch {
         self.exclude_paths = self
             .exclude_paths
             .into_iter()
-            .map(|x| {
-                #[cfg(feature = "anyhow")]
-                {
-                    x.canonicalize()
-                        .with_context(|| format!("can't find {}", x.display()))
-                }
-                #[cfg(feature = "eyre")]
-                {
-                    x.canonicalize()
-                        .wrap_err_with(|| format!("can't find {}", x.display()))
-                }
-            })
+            .map(canonicalize_path)
             .collect::<Result<Vec<_>, _>>()?;
 
         if self.watch_paths.is_empty() {
@@ -366,38 +355,16 @@ impl Watch {
         self.watch_paths = self
             .watch_paths
             .into_iter()
-            .map(|x| {
-                #[cfg(feature = "anyhow")]
-                {
-                    x.canonicalize()
-                        .with_context(|| format!("can't find {}", x.display()))
-                }
-                #[cfg(feature = "eyre")]
-                {
-                    x.canonicalize()
-                        .wrap_err_with(|| format!("can't find {}", x.display()))
-                }
-            })
+            .map(canonicalize_path)
             .collect::<Result<Vec<_>, _>>()?;
 
         let (tx, rx) = mpsc::channel();
 
-        let handler = WatchEventHandler {
+        let mut watcher = init_watcher(WatchEventHandler {
             watch: self.clone(),
             tx,
             command_start: Instant::now(),
-        };
-
-        let mut watcher = {
-            #[cfg(feature = "anyhow")]
-            {
-                notify::recommended_watcher(handler).context("could not initialize watcher")?
-            }
-            #[cfg(feature = "eyre")]
-            {
-                notify::recommended_watcher(handler).wrap_err("could not initialize watcher")?
-            }
-        };
+        })?;
 
         for path in &self.watch_paths {
             match watcher.watch(path, RecursiveMode::Recursive) {
@@ -481,6 +448,30 @@ impl Watch {
                 .iter()
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
+    }
+}
+
+fn canonicalize_path(path: PathBuf) -> Result<PathBuf> {
+    #[cfg(feature = "anyhow")]
+    {
+        path.canonicalize()
+            .with_context(|| format!("can't find `{}`", path.display()))
+    }
+    #[cfg(feature = "eyre")]
+    {
+        path.canonicalize()
+            .wrap_err_with(|| format!("can't find `{}`", path.display()))
+    }
+}
+
+fn init_watcher(handler: impl EventHandler) -> Result<notify::RecommendedWatcher> {
+    #[cfg(feature = "anyhow")]
+    {
+        notify::recommended_watcher(handler).context("could not initilialize watcher")
+    }
+    #[cfg(feature = "eyre")]
+    {
+        notify::recommended_watcher(handler).wrap_err("could not initialize watcher")
     }
 }
 
