@@ -175,9 +175,10 @@ compile_error!("enable one of the following features: `anyhow` or `eyre`");
 #[cfg(feature = "anyhow")]
 use anyhow::{Context, Result};
 #[cfg(feature = "eyre")]
-use eyre::{Result, WrapErr};
+use eyre::{ContextCompat, Result, WrapErr};
 
 use clap::Parser;
+use glob::Pattern;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
 use std::{
@@ -238,10 +239,12 @@ pub struct Watch {
     /// The default is the workspace root.
     #[clap(long = "watch", short = 'w')]
     pub watch_paths: Vec<PathBuf>,
-    /// Paths that will be excluded.
+    /// Paths or glob patterns that will be excluded.
+    ///
+    /// Relative values are resolved from the current working directory.
     #[clap(long = "ignore", short = 'i')]
     pub exclude_paths: Vec<PathBuf>,
-    /// Paths, relative to the workspace root, that will be excluded.
+    /// Paths or glob patterns, relative to the workspace root, that will be excluded.
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
     /// Throttle events to prevent the command to be re-executed too early
@@ -250,6 +253,10 @@ pub struct Watch {
     /// The default is 2 seconds.
     #[clap(skip = Duration::from_secs(2))]
     pub debounce: Duration,
+    #[clap(skip)]
+    exclude_globs: Vec<Pattern>,
+    #[clap(skip)]
+    workspace_exclude_globs: Vec<Pattern>,
 }
 
 impl Watch {
@@ -338,14 +345,7 @@ impl Watch {
             }));
         }
 
-        self.exclude_paths
-            .push(metadata.target_directory.clone().into_std_path_buf());
-
-        self.exclude_paths = self
-            .exclude_paths
-            .into_iter()
-            .map(canonicalize_path)
-            .collect::<Result<Vec<_>, _>>()?;
+        self.prepare_excludes()?;
 
         if self.watch_paths.is_empty() {
             self.watch_paths
@@ -421,11 +421,23 @@ impl Watch {
             return true;
         }
 
+        if self.exclude_globs.iter().any(|p| p.matches_path(path)) {
+            return true;
+        }
+
         if let Ok(stripped_path) = path.strip_prefix(metadata().workspace_root.as_std_path()) {
             if self
                 .workspace_exclude_paths
                 .iter()
                 .any(|x| stripped_path.starts_with(x))
+            {
+                return true;
+            }
+
+            if self
+                .workspace_exclude_globs
+                .iter()
+                .any(|p| p.matches_path(stripped_path))
             {
                 return true;
             }
@@ -448,6 +460,86 @@ impl Watch {
                 .iter()
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
+    }
+
+    fn is_glob_pattern(path: &Path) -> bool {
+        let s = path.as_os_str().to_string_lossy();
+        s.contains('*') || s.contains('?') || (!cfg!(windows) && s.contains('['))
+    }
+
+    fn compile_glob(path: &Path) -> Result<Pattern> {
+        #[cfg(feature = "anyhow")]
+        let pattern = path
+            .to_str()
+            .with_context(|| format!("glob pattern must be valid UTF-8: {}", path.display()))?;
+        #[cfg(feature = "eyre")]
+        let pattern = path
+            .to_str()
+            .wrap_err_with(|| format!("glob pattern must be valid UTF-8: {}", path.display()))?;
+
+        #[cfg(feature = "anyhow")]
+        {
+            Pattern::new(pattern)
+                .with_context(|| format!("invalid glob pattern: `{}`", path.display()))
+        }
+
+        #[cfg(feature = "eyre")]
+        {
+            Pattern::new(pattern)
+                .wrap_err_with(|| format!("invalid glob pattern: `{}`", path.display()))
+        }
+    }
+
+    fn prepare_excludes(&mut self) -> Result<()> {
+        let metadata = metadata();
+        self.exclude_paths
+            .push(metadata.target_directory.clone().into_std_path_buf());
+
+        let current_dir = env::current_dir().context("failed to get current directory")?;
+        let mut exclude_paths = Vec::new();
+        for path in self.exclude_paths.iter() {
+            if Self::is_glob_pattern(path) {
+                let absolute = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    current_dir.join(path)
+                };
+                self.exclude_globs.push(Self::compile_glob(&absolute)?);
+            } else {
+                let canonical = path
+                    .canonicalize()
+                    .with_context(|| format!("can't find `{}`", path.display()))?;
+                exclude_paths.push(canonical);
+            }
+        }
+        self.exclude_paths = exclude_paths;
+
+        let workspace_root = metadata.workspace_root.as_std_path();
+        let mut workspace_exclude_paths = Vec::new();
+        for path in self.workspace_exclude_paths.iter() {
+            let path = if path.is_absolute() {
+                path.strip_prefix(workspace_root)
+                    .with_context(|| {
+                        format!(
+                            "workspace exclude path must be inside workspace root: `{}`",
+                            path.display()
+                        )
+                    })?
+                    .to_path_buf()
+            } else {
+                path.to_path_buf()
+            };
+
+            if Self::is_glob_pattern(&path) {
+                self.workspace_exclude_globs
+                    .push(Self::compile_glob(&path)?);
+            } else {
+                workspace_exclude_paths.push(path);
+            }
+        }
+        self.workspace_exclude_paths = workspace_exclude_paths;
+
+        Ok(())
     }
 }
 
@@ -644,14 +736,7 @@ mod test {
 
     #[test]
     fn exclude_relative_path() {
-        let watch = Watch {
-            shell_commands: Vec::new(),
-            cargo_commands: Vec::new(),
-            debounce: Default::default(),
-            watch_paths: Vec::new(),
-            exclude_paths: Vec::new(),
-            workspace_exclude_paths: vec![PathBuf::from("src/watch.rs")],
-        };
+        let watch = Watch::default().exclude_workspace_path("src/watch.rs");
 
         assert!(
             watch.is_excluded_path(
@@ -663,6 +748,114 @@ mod test {
             )
         );
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
+    }
+
+    #[test]
+    fn exclude_absolute_glob_path() {
+        let absolute = metadata()
+            .workspace_root
+            .join("src")
+            .join("**")
+            .join("*.rs");
+
+        let mut watch = Watch::default().exclude_path(absolute);
+        watch
+            .prepare_excludes()
+            .expect("exclude parsing should succeed");
+        assert_eq!(watch.exclude_globs.len(), 1);
+
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
+    }
+
+    #[test]
+    fn exclude_workspace_glob_path() {
+        let mut watch = Watch::default().exclude_workspace_path("src/**/*.rs");
+        watch
+            .prepare_excludes()
+            .expect("exclude parsing should succeed");
+        assert_eq!(watch.workspace_exclude_globs.len(), 1);
+
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
+    }
+
+    #[test]
+    fn exclude_workspace_absolute_glob_path() {
+        let absolute = metadata()
+            .workspace_root
+            .join("src")
+            .join("**")
+            .join("*.rs");
+        let mut watch = Watch::default().exclude_workspace_path(absolute);
+        watch
+            .prepare_excludes()
+            .expect("exclude parsing should succeed");
+
+        assert_eq!(watch.workspace_exclude_globs.len(), 1);
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
+    }
+
+    #[test]
+    fn exclude_workspace_glob_non_match() {
+        let mut watch = Watch::default().exclude_workspace_path("tests/**/*.rs");
+        watch
+            .prepare_excludes()
+            .expect("exclude parsing should succeed");
+
+        assert!(
+            !watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
+    }
+
+    #[test]
+    fn glob_detection() {
+        assert!(Watch::is_glob_pattern(Path::new("src/**/*.rs")));
+        assert!(Watch::is_glob_pattern(Path::new("foo?.rs")));
+
+        #[cfg(not(windows))]
+        assert!(Watch::is_glob_pattern(Path::new("[ab].rs")));
+        #[cfg(windows)]
+        assert!(!Watch::is_glob_pattern(Path::new("[ab].rs")));
+
+        assert!(!Watch::is_glob_pattern(Path::new("src/lib.rs")));
+    }
+
+    #[test]
+    fn invalid_glob_pattern() {
+        let err = Watch::compile_glob(Path::new("[abc")).expect_err("should fail");
+        assert!(
+            err.to_string().contains("invalid glob pattern"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
