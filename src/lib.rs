@@ -173,19 +173,19 @@ compile_error!("features `anyhow` and `eyre` are mutually exclusive; enable only
 compile_error!("enable one of the following features: `anyhow` or `eyre`");
 
 #[cfg(feature = "anyhow")]
-use anyhow::{Context, Result};
+use anyhow::Result;
 #[cfg(feature = "eyre")]
-use eyre::{ContextCompat, Result, WrapErr};
+use eyre::Result;
 
 use clap::Parser;
 use glob::Pattern;
 use lazy_static::lazy_static;
 use notify::{Event, EventHandler, RecursiveMode, Watcher};
 use std::{
-    env, io,
+    env, fmt, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -197,6 +197,70 @@ pub use eyre;
 
 pub use cargo_metadata;
 pub use cargo_metadata::camino;
+
+trait ContextExt<T> {
+    fn context<C: fmt::Display + Send + Sync + 'static>(self, ctx: C) -> Result<T>;
+    fn with_context<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Result<T>;
+}
+
+#[cfg(feature = "anyhow")]
+impl<T, E: std::error::Error + Send + Sync + 'static> ContextExt<T> for std::result::Result<T, E> {
+    fn context<C: fmt::Display + Send + Sync + 'static>(self, ctx: C) -> Result<T> {
+        anyhow::Context::context(self, ctx)
+    }
+
+    fn with_context<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Result<T> {
+        anyhow::Context::with_context(self, f)
+    }
+}
+
+#[cfg(feature = "eyre")]
+impl<T, E: std::error::Error + Send + Sync + 'static> ContextExt<T> for std::result::Result<T, E> {
+    fn context<C: fmt::Display + Send + Sync + 'static>(self, ctx: C) -> Result<T> {
+        eyre::WrapErr::wrap_err(self, ctx)
+    }
+
+    fn with_context<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Result<T> {
+        eyre::WrapErr::wrap_err_with(self, f)
+    }
+}
+
+#[cfg(feature = "anyhow")]
+impl<T> ContextExt<T> for Option<T> {
+    fn context<C: fmt::Display + Send + Sync + 'static>(self, ctx: C) -> Result<T> {
+        anyhow::Context::context(self, ctx)
+    }
+
+    fn with_context<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Result<T> {
+        anyhow::Context::with_context(self, f)
+    }
+}
+
+#[cfg(feature = "eyre")]
+impl<T> ContextExt<T> for Option<T> {
+    fn context<C: fmt::Display + Send + Sync + 'static>(self, ctx: C) -> Result<T> {
+        eyre::ContextCompat::wrap_err(self, ctx)
+    }
+
+    fn with_context<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Result<T> {
+        eyre::ContextCompat::wrap_err_with(self, f)
+    }
+}
 pub use clap;
 
 /// Fetch the metadata of the crate.
@@ -468,26 +532,10 @@ impl Watch {
     }
 
     fn compile_glob(path: &Path) -> Result<Pattern> {
-        #[cfg(feature = "anyhow")]
         let pattern = path
             .to_str()
             .with_context(|| format!("glob pattern must be valid UTF-8: {}", path.display()))?;
-        #[cfg(feature = "eyre")]
-        let pattern = path
-            .to_str()
-            .wrap_err_with(|| format!("glob pattern must be valid UTF-8: {}", path.display()))?;
-
-        #[cfg(feature = "anyhow")]
-        {
-            Pattern::new(pattern)
-                .with_context(|| format!("invalid glob pattern: `{}`", path.display()))
-        }
-
-        #[cfg(feature = "eyre")]
-        {
-            Pattern::new(pattern)
-                .wrap_err_with(|| format!("invalid glob pattern: `{}`", path.display()))
-        }
+        Pattern::new(pattern).with_context(|| format!("invalid glob pattern: `{}`", path.display()))
     }
 
     // Must only be called once per instance: pushes into exclude_globs and
@@ -546,27 +594,12 @@ impl Watch {
 }
 
 fn canonicalize_path(path: PathBuf) -> Result<PathBuf> {
-    #[cfg(feature = "anyhow")]
-    {
-        path.canonicalize()
-            .with_context(|| format!("can't find `{}`", path.display()))
-    }
-    #[cfg(feature = "eyre")]
-    {
-        path.canonicalize()
-            .wrap_err_with(|| format!("can't find `{}`", path.display()))
-    }
+    path.canonicalize()
+        .with_context(|| format!("can't find `{}`", path.display()))
 }
 
 fn init_watcher(handler: impl EventHandler) -> Result<notify::RecommendedWatcher> {
-    #[cfg(feature = "anyhow")]
-    {
-        notify::recommended_watcher(handler).context("could not initialize watcher")
-    }
-    #[cfg(feature = "eyre")]
-    {
-        notify::recommended_watcher(handler).wrap_err("could not initialize watcher")
-    }
+    notify::recommended_watcher(handler).context("could not initialize watcher")
 }
 
 struct WatchEventHandler {
@@ -740,15 +773,13 @@ mod test {
     fn exclude_relative_path() {
         let watch = Watch::default().exclude_workspace_path("src/watch.rs");
 
-        assert!(
-            watch.is_excluded_path(
-                metadata()
-                    .workspace_root
-                    .join("src")
-                    .join("watch.rs")
-                    .as_std_path()
-            )
-        );
+        assert!(watch.is_excluded_path(
+            metadata()
+                .workspace_root
+                .join("src")
+                .join("watch.rs")
+                .as_std_path()
+        ));
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
     }
 
@@ -766,15 +797,13 @@ mod test {
             .expect("exclude parsing should succeed");
         assert_eq!(watch.exclude_globs.len(), 1);
 
-        assert!(
-            watch.is_excluded_path(
-                metadata()
-                    .workspace_root
-                    .join("src")
-                    .join("lib.rs")
-                    .as_std_path()
-            )
-        );
+        assert!(watch.is_excluded_path(
+            metadata()
+                .workspace_root
+                .join("src")
+                .join("lib.rs")
+                .as_std_path()
+        ));
     }
 
     #[test]
@@ -785,15 +814,13 @@ mod test {
             .expect("exclude parsing should succeed");
         assert_eq!(watch.workspace_exclude_globs.len(), 1);
 
-        assert!(
-            watch.is_excluded_path(
-                metadata()
-                    .workspace_root
-                    .join("src")
-                    .join("lib.rs")
-                    .as_std_path()
-            )
-        );
+        assert!(watch.is_excluded_path(
+            metadata()
+                .workspace_root
+                .join("src")
+                .join("lib.rs")
+                .as_std_path()
+        ));
     }
 
     #[test]
@@ -809,15 +836,13 @@ mod test {
             .expect("exclude parsing should succeed");
 
         assert_eq!(watch.workspace_exclude_globs.len(), 1);
-        assert!(
-            watch.is_excluded_path(
-                metadata()
-                    .workspace_root
-                    .join("src")
-                    .join("lib.rs")
-                    .as_std_path()
-            )
-        );
+        assert!(watch.is_excluded_path(
+            metadata()
+                .workspace_root
+                .join("src")
+                .join("lib.rs")
+                .as_std_path()
+        ));
     }
 
     #[test]
@@ -827,15 +852,13 @@ mod test {
             .prepare_excludes()
             .expect("exclude parsing should succeed");
 
-        assert!(
-            !watch.is_excluded_path(
-                metadata()
-                    .workspace_root
-                    .join("src")
-                    .join("lib.rs")
-                    .as_std_path()
-            )
-        );
+        assert!(!watch.is_excluded_path(
+            metadata()
+                .workspace_root
+                .join("src")
+                .join("lib.rs")
+                .as_std_path()
+        ));
     }
 
     #[test]
