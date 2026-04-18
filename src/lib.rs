@@ -490,12 +490,14 @@ impl Watch {
         }
     }
 
+    // Must only be called once per instance: pushes into exclude_globs and
+    // workspace_exclude_globs without clearing them first.
     fn prepare_excludes(&mut self) -> Result<()> {
         let metadata = metadata();
         self.exclude_paths
             .push(metadata.target_directory.clone().into_std_path_buf());
 
-        let current_dir = env::current_dir().context("failed to get current directory")?;
+        let current_dir = env::current_dir().context("can't get current directory")?;
         let mut exclude_paths = Vec::new();
         for path in self.exclude_paths.iter() {
             if Self::is_glob_pattern(path) {
@@ -559,7 +561,7 @@ fn canonicalize_path(path: PathBuf) -> Result<PathBuf> {
 fn init_watcher(handler: impl EventHandler) -> Result<notify::RecommendedWatcher> {
     #[cfg(feature = "anyhow")]
     {
-        notify::recommended_watcher(handler).context("could not initilialize watcher")
+        notify::recommended_watcher(handler).context("could not initialize watcher")
     }
     #[cfg(feature = "eyre")]
     {
