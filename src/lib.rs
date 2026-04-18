@@ -419,16 +419,20 @@ impl Watch {
         self.watch_paths = self
             .watch_paths
             .into_iter()
-            .map(canonicalize_path)
+            .map(|p| {
+                p.canonicalize()
+                    .with_context(|| format!("can't find `{}`", p.display()))
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         let (tx, rx) = mpsc::channel();
 
-        let mut watcher = init_watcher(WatchEventHandler {
+        let mut watcher = notify::recommended_watcher(WatchEventHandler {
             watch: self.clone(),
             tx,
             command_start: Instant::now(),
-        })?;
+        })
+        .context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
             match watcher.watch(path, RecursiveMode::Recursive) {
@@ -591,15 +595,6 @@ impl Watch {
 
         Ok(())
     }
-}
-
-fn canonicalize_path(path: PathBuf) -> Result<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("can't find `{}`", path.display()))
-}
-
-fn init_watcher(handler: impl EventHandler) -> Result<notify::RecommendedWatcher> {
-    notify::recommended_watcher(handler).context("could not initialize watcher")
 }
 
 struct WatchEventHandler {
