@@ -185,7 +185,7 @@ use std::{
     env, fmt, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -768,13 +768,15 @@ mod test {
     fn exclude_relative_path() {
         let watch = Watch::default().exclude_workspace_path("src/watch.rs");
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("watch.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("watch.rs")
+                    .as_std_path()
+            )
+        );
         assert!(!watch.is_excluded_path(metadata().workspace_root.join("src").as_std_path()));
     }
 
@@ -792,13 +794,15 @@ mod test {
             .expect("exclude parsing should succeed");
         assert_eq!(watch.exclude_globs.len(), 1);
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
@@ -809,13 +813,15 @@ mod test {
             .expect("exclude parsing should succeed");
         assert_eq!(watch.workspace_exclude_globs.len(), 1);
 
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
@@ -831,13 +837,15 @@ mod test {
             .expect("exclude parsing should succeed");
 
         assert_eq!(watch.workspace_exclude_globs.len(), 1);
-        assert!(watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
@@ -847,13 +855,15 @@ mod test {
             .prepare_excludes()
             .expect("exclude parsing should succeed");
 
-        assert!(!watch.is_excluded_path(
-            metadata()
-                .workspace_root
-                .join("src")
-                .join("lib.rs")
-                .as_std_path()
-        ));
+        assert!(
+            !watch.is_excluded_path(
+                metadata()
+                    .workspace_root
+                    .join("src")
+                    .join("lib.rs")
+                    .as_std_path()
+            )
+        );
     }
 
     #[test]
