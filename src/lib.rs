@@ -167,7 +167,7 @@ use std::{
     env, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc},
+    sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -380,22 +380,32 @@ impl Watch {
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
 
-                    if let Some(lock) = lock {
-                        let _guard = lock.lock();
-                    }
+                    let mut run_batch = || {
+                        list.spawn(|res| match res {
+                            Err(err) => {
+                                log::error!("Could not execute command: {err}");
+                                false
+                            }
+                            Ok(child) => {
+                                log::trace!("new child: {}", child.id());
+                                current_child.replace(child);
+                                status = current_child.wait();
+                                status.success()
+                            }
+                        });
+                    };
 
-                    list.spawn(|res| match res {
-                        Err(err) => {
-                            log::error!("Could not execute command: {err}");
-                            false
+                    if let Some(lock) = lock {
+                        match lock.write() {
+                            Ok(_guard) => run_batch(),
+                            Err(err) => {
+                                log::error!("could not acquire write lock: {err}");
+                                return;
+                            }
                         }
-                        Ok(child) => {
-                            log::trace!("new child: {}", child.id());
-                            current_child.replace(child);
-                            status = current_child.wait();
-                            status.success()
-                        }
-                    });
+                    } else {
+                        run_batch();
+                    }
 
                     if status.success() {
                         log::info!("Command succeeded.");
@@ -700,7 +710,7 @@ impl CommandList {
 ///
 /// Clone this type to share the same lock across threads/components.
 #[derive(Clone, Debug, Default)]
-pub struct Lock(Arc<Mutex<()>>);
+pub struct Lock(Arc<RwLock<()>>);
 
 impl Lock {
     /// Create a new lock instance.
@@ -708,11 +718,18 @@ impl Lock {
         Self::default()
     }
 
-    /// Acquire the lock, blocking the current thread until it is available.
+    /// Acquire a shared read lock, blocking the current thread until it is available.
+    ///
+    /// Multiple readers may hold the lock concurrently as long as no writer holds it.
+    pub fn read(&self) -> Result<RwLockReadGuard<'_, ()>, PoisonError<RwLockReadGuard<'_, ()>>> {
+        self.0.read()
+    }
+
+    /// Acquire an exclusive write lock, blocking the current thread until it is available.
     ///
     /// The lock is released when the returned guard is dropped.
-    pub fn lock(&self) -> Result<MutexGuard<'_, ()>, PoisonError<MutexGuard<'_, ()>>> {
-        self.0.lock()
+    pub fn write(&self) -> Result<RwLockWriteGuard<'_, ()>, PoisonError<RwLockWriteGuard<'_, ()>>> {
+        self.0.write()
     }
 }
 
