@@ -379,27 +379,23 @@ impl Watch {
                 let lock = lock.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
-                    let mut run_batch = || {
-                        list.spawn(|res| match res {
-                            Err(err) => {
-                                log::error!("Could not execute command: {err}");
-                                false
-                            }
-                            Ok(child) => {
-                                log::trace!("new child: {}", child.id());
-                                current_child.replace(child);
-                                status = current_child.wait();
-                                status.success()
-                            }
-                        });
-                    };
 
                     if let Some(lock) = lock {
                         let _guard = lock.lock();
-                        run_batch();
-                    } else {
-                        run_batch();
                     }
+
+                    list.spawn(|res| match res {
+                        Err(err) => {
+                            log::error!("Could not execute command: {err}");
+                            false
+                        }
+                        Ok(child) => {
+                            log::trace!("new child: {}", child.id());
+                            current_child.replace(child);
+                            status = current_child.wait();
+                            status.success()
+                        }
+                    });
 
                     if status.success() {
                         log::info!("Command succeeded.");
