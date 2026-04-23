@@ -167,7 +167,7 @@ use std::{
     env, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -306,19 +306,11 @@ impl Watch {
     /// This can be used as a binary semaphore between two execution paths that must not overlap.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run_with_lock(
-        self,
-        commands: impl Into<CommandList>,
-        lock: Arc<Mutex<()>>,
-    ) -> Result<()> {
+    pub fn run_with_lock(self, commands: impl Into<CommandList>, lock: Lock) -> Result<()> {
         self.run_inner(commands, Some(lock))
     }
 
-    fn run_inner(
-        mut self,
-        commands: impl Into<CommandList>,
-        lock: Option<Arc<Mutex<()>>>,
-    ) -> Result<()> {
+    fn run_inner(mut self, commands: impl Into<CommandList>, lock: Option<Lock>) -> Result<()> {
         let metadata = metadata();
         let list = commands.into();
 
@@ -384,7 +376,7 @@ impl Watch {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
-                let lock = lock.as_ref().map(Arc::clone);
+                let lock = lock.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
                     let mut run_batch = || {
@@ -403,7 +395,7 @@ impl Watch {
                     };
 
                     if let Some(lock) = lock {
-                        let _guard = lock.lock().expect("not poisoned");
+                        let _guard = lock.lock();
                         run_batch();
                     } else {
                         run_batch();
@@ -704,6 +696,27 @@ impl CommandList {
             }
         }
         Ok(Default::default())
+    }
+}
+
+/// A synchronization primitive shared between watch-driven command execution and
+/// external code that must not run concurrently.
+///
+/// Clone this type to share the same lock across threads/components.
+#[derive(Clone, Debug, Default)]
+pub struct Lock(Arc<Mutex<()>>);
+
+impl Lock {
+    /// Create a new lock instance.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Acquire the lock, blocking the current thread until it is available.
+    ///
+    /// The lock is released when the returned guard is dropped.
+    pub fn lock(&self) -> Result<MutexGuard<'_, ()>, PoisonError<MutexGuard<'_, ()>>> {
+        self.0.lock()
     }
 }
 
