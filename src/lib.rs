@@ -301,9 +301,11 @@ impl Watch {
         self.run_inner(commands, None)
     }
 
-    /// Like [`run`], but executes each command batch while holding `lock`.
+    /// Like [`run`], but executes each command batch while holding a write lock on `lock`.
     ///
-    /// This can be used as a binary semaphore between two execution paths that must not overlap.
+    /// This allows external code to coordinate with the watch loop using the same [`Lock`]:
+    /// - command batches acquire a write lock (exclusive),
+    /// - external readers can acquire a read lock and will block will a command batch is running.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
     pub fn run_with_lock(self, commands: impl Into<CommandList>, lock: Lock) -> Result<()> {
@@ -705,8 +707,8 @@ impl CommandList {
     }
 }
 
-/// A synchronization primitive shared between watch-driven command execution and
-/// external code that must not run concurrently.
+/// Shared reader/writer synchronization primitive used to coordinate watch-driven
+/// command execution with external code.
 ///
 /// Clone this type to share the same lock across threads/components.
 #[derive(Clone, Debug, Default)]
@@ -718,16 +720,16 @@ impl Lock {
         Self::default()
     }
 
-    /// Acquire a shared read lock, blocking the current thread until it is available.
+    /// Acquire a shared read lock, blocking until no writer holds the lock.
     ///
-    /// Multiple readers may hold the lock concurrently as long as no writer holds it.
+    /// Multiple readers may hold this lock concurrently.
     pub fn read(&self) -> Result<RwLockReadGuard<'_, ()>, PoisonError<RwLockReadGuard<'_, ()>>> {
         self.0.read()
     }
 
-    /// Acquire an exclusive write lock, blocking the current thread until it is available.
+    /// Acquire an exclusive write lock, blocking until all readers/writers release it.
     ///
-    /// The lock is released when the returned guard is dropped.
+    /// Use this for operations that mutate shared state (e.g. rebuild output files).
     pub fn write(&self) -> Result<RwLockWriteGuard<'_, ()>, PoisonError<RwLockWriteGuard<'_, ()>>> {
         self.0.write()
     }
