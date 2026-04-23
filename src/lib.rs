@@ -297,7 +297,27 @@ impl Watch {
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
+    pub fn run(self, commands: impl Into<CommandList>) -> Result<()> {
+        self.run_with_hooks(commands, || {}, || {})
+    }
+
+    /// Like [`run`], but calls `on_start` and `on_finish` around each command-batch execution.
+    ///
+    /// `on_start` is called in the build thread immediately before the first command in the batch
+    /// is spawned. `on_finish` is called in the same thread immediately after the last command has
+    /// exited (whether it succeeded or not).
+    ///
+    /// Workspace's `target` directory and hidden paths are excluded by default.
+    pub fn run_with_hooks<F, G>(
+        mut self,
+        commands: impl Into<CommandList>,
+        on_start: F,
+        on_finish: G,
+    ) -> Result<()>
+    where
+        F: Fn() + Send + Sync + 'static,
+        G: Fn() + Send + Sync + 'static,
+    {
         let metadata = metadata();
         let list = commands.into();
 
@@ -357,13 +377,19 @@ impl Watch {
             }
         }
 
+        let on_start = Arc::new(on_start);
+        let on_finish = Arc::new(on_finish);
+
         let mut current_child = SharedChild::new();
         loop {
             {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
+                let on_start = Arc::clone(&on_start);
+                let on_finish = Arc::clone(&on_finish);
                 thread::spawn(move || {
+                    on_start();
                     let mut status = ExitStatus::default();
                     list.spawn(|res| match res {
                         Err(err) => {
@@ -377,6 +403,7 @@ impl Watch {
                             status.success()
                         }
                     });
+                    on_finish();
                     if status.success() {
                         log::info!("Command succeeded.");
                     } else if let Some(code) = status.code() {
