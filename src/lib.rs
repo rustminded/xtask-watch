@@ -167,7 +167,7 @@ use std::{
     env, io,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus},
-    sync::{Arc, Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard, mpsc},
+    sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -236,7 +236,7 @@ pub struct Watch {
     #[clap(skip)]
     workspace_exclude_globs: Vec<Pattern>,
     #[clap(skip)]
-    watch_lock: Option<WatchLock>,
+    watch_lock: WatchLock,
 }
 
 impl Watch {
@@ -289,12 +289,13 @@ impl Watch {
         self
     }
 
-    /// Return the shared lock for this watcher, creating it if it does not exist yet.
+    /// Return the shared lock used by this watcher.
     ///
     /// Clone and share this lock with external code (e.g. HTTP handlers) to coordinate with
     /// watch-driven command execution.
-    pub fn lock(&mut self) -> WatchLock {
-        self.watch_lock.get_or_insert_with(WatchLock::new).clone()
+    #[must_use = "store and share the lock with readers that must coordinate with rebuilds"]
+    pub fn lock(&self) -> WatchLock {
+        self.watch_lock.clone()
     }
 
     /// Set the debounce duration after relaunching the command.
@@ -392,17 +393,8 @@ impl Watch {
                         });
                     };
 
-                    if let Some(lock) = lock {
-                        match lock.write() {
-                            Ok(_guard) => run_batch(),
-                            Err(err) => {
-                                log::error!("could not acquire write lock: {err}");
-                                return;
-                            }
-                        }
-                    } else {
-                        run_batch();
-                    }
+                    let _guard = lock.write();
+                    run_batch();
 
                     if status.success() {
                         log::info!("Command succeeded.");
@@ -702,31 +694,38 @@ impl CommandList {
     }
 }
 
-/// Shared reader/writer synchronization primitive used to coordinate watch-driven
-/// command execution with external code.
+/// Guard returned by [`WatchLock::acquire`].
 ///
-/// Clone this type to share the same lock across threads/components.
+/// Keep this value alive for the duration of the protected read section.
+/// The lock is released automatically when the guard is dropped.
+pub struct WatchLockGuard<'a> {
+    _guard: RwLockReadGuard<'a, ()>,
+}
+
+/// A lock handle used to coordinate file reads with watch-driven rebuilds.
+///
+/// Obtain it from [`Watch::lock`], clone it, and call [`WatchLock::acquire`] while
+/// reading files that must not race with rebuild writes.
 #[derive(Clone, Debug, Default)]
 pub struct WatchLock(Arc<RwLock<()>>);
 
 impl WatchLock {
-    /// Create a new lock instance.
-    pub fn new() -> Self {
-        Self::default()
+    /// Acquire shared access to the protected section.
+    ///
+    /// Multiple readers may hold this guard concurrently.
+    pub fn acquire(&self) -> WatchLockGuard<'_> {
+        WatchLockGuard {
+            _guard: self
+                .0
+                .read()
+                .expect("watch lock poisoned while acquiring read access"),
+        }
     }
 
-    /// Acquire a shared read lock, blocking until no writer holds the lock.
-    ///
-    /// Multiple readers may hold this lock concurrently.
-    pub fn read(&self) -> Result<RwLockReadGuard<'_, ()>, PoisonError<RwLockReadGuard<'_, ()>>> {
-        self.0.read()
-    }
-
-    /// Acquire an exclusive write lock, blocking until all readers/writers release it.
-    ///
-    /// Use this for operations that mutate shared state (e.g. rebuild output files).
-    pub fn write(&self) -> Result<RwLockWriteGuard<'_, ()>, PoisonError<RwLockWriteGuard<'_, ()>>> {
-        self.0.write()
+    fn write(&self) -> RwLockWriteGuard<'_, ()> {
+        self.0
+            .write()
+            .expect("watch lock poisoned while acquiring write access")
     }
 }
 
