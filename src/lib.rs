@@ -235,6 +235,8 @@ pub struct Watch {
     exclude_globs: Vec<Pattern>,
     #[clap(skip)]
     workspace_exclude_globs: Vec<Pattern>,
+    #[clap(skip)]
+    watch_lock: Option<WatchLock>,
 }
 
 impl Watch {
@@ -287,6 +289,14 @@ impl Watch {
         self
     }
 
+    /// Return the shared lock for this watcher, creating it if it does not exist yet.
+    ///
+    /// Clone and share this lock with external code (e.g. HTTP handlers) to coordinate with
+    /// watch-driven command execution.
+    pub fn lock(&mut self) -> WatchLock {
+        self.watch_lock.get_or_insert_with(WatchLock::new).clone()
+    }
+
     /// Set the debounce duration after relaunching the command.
     pub fn debounce(mut self, duration: Duration) -> Self {
         self.debounce = duration;
@@ -297,22 +307,7 @@ impl Watch {
     /// command when changes are detected.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run(self, commands: impl Into<CommandList>) -> Result<()> {
-        self.run_inner(commands, None)
-    }
-
-    /// Like [`run`], but executes each command batch while holding a write lock on `lock`.
-    ///
-    /// This allows external code to coordinate with the watch loop using the same [`Lock`]:
-    /// - command batches acquire a write lock (exclusive),
-    /// - external readers can acquire a read lock and will block will a command batch is running.
-    ///
-    /// Workspace's `target` directory and hidden paths are excluded by default.
-    pub fn run_with_lock(self, commands: impl Into<CommandList>, lock: Lock) -> Result<()> {
-        self.run_inner(commands, Some(lock))
-    }
-
-    fn run_inner(mut self, commands: impl Into<CommandList>, lock: Option<Lock>) -> Result<()> {
+    pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
         let metadata = metadata();
         let list = commands.into();
 
@@ -378,7 +373,7 @@ impl Watch {
                 log::info!("Re-running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
-                let lock = lock.clone();
+                let lock = self.watch_lock.clone();
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
 
@@ -712,9 +707,9 @@ impl CommandList {
 ///
 /// Clone this type to share the same lock across threads/components.
 #[derive(Clone, Debug, Default)]
-pub struct Lock(Arc<RwLock<()>>);
+pub struct WatchLock(Arc<RwLock<()>>);
 
-impl Lock {
+impl WatchLock {
     /// Create a new lock instance.
     pub fn new() -> Self {
         Self::default()
