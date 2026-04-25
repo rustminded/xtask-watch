@@ -406,10 +406,10 @@ impl Watch {
             match rx.recv() {
                 Ok(Event::ChangeDetected) => {
                     log::trace!("Changes detected, re-generating");
-                    current_child.terminate();
                     if lock_guard.is_none() {
                         lock_guard = Some(self.watch_lock.write());
                     }
+                    current_child.terminate();
                 }
                 Ok(Event::CommandSucceded) => {
                     lock_guard.take();
