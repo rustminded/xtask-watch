@@ -16,9 +16,7 @@
 [deps-url]: https://deps.rs/crate/xtask-watch
 [licenses-badge]: https://img.shields.io/crates/l/xtask-watch
 
-<!-- cargo-rdme start -->
-
-This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launch a given command, re-launching the
+This crate provides a [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) that launches a given command, re-launching the
 command when changes are detected in your source code.
 
 This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html) struct is intended to be used with the
@@ -27,6 +25,12 @@ This [`Watch`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.Watch.html)
 your xtask crate. See [clap's `flatten`](https://github.com/clap-rs/clap/blob/master/examples/derive_ref/flatten_hand_args.rs)
 to see how to extend it.
 
+## Features
+
+- Watch your workspace and re-run a command on file changes
+- Exclude paths from watching using glob patterns
+- Use [`WatchLock`](https://docs.rs/xtask-watch/latest/xtask_watch/struct.WatchLock.html) to coordinate rebuilds with external readers (e.g. a dev server that should wait for a rebuild to finish before reloading)
+
 ## Setup
 
 The best way to add xtask-watch to your project is to create a workspace with two packages:
@@ -34,7 +38,7 @@ your project's package and the xtask package.
 
 ### Create a project using xtask
 
-* Create a new directory that will contains the two package of your project
+* Create a new directory that will contain the two packages of your project
   and the workspace's `Cargo.toml`
 
   ```console
@@ -60,7 +64,6 @@ your project's package and the xtask package.
   ]
   ```
 
-
 * Create a `.cargo/config.toml` file and add the following content:
 
   ```toml
@@ -76,9 +79,9 @@ my-project
 │   └── config.toml
 ├── Cargo.toml
 ├── my-project
-│   ├── Cargo.toml
-│   └── src
-│       └── ...
+│   ├── Cargo.toml
+│   └── src
+│       └── ...
 └── xtask
     ├── Cargo.toml
     └── src
@@ -90,8 +93,8 @@ And now you can run your xtask package using:
 ```console
 cargo xtask
 ```
-You can find more informations about xtask
-[here](https://github.com/matklad/cargo-xtask/).
+
+You can find more information about xtask [here](https://github.com/matklad/cargo-xtask/).
 
 ### Use xtask-watch as a dependency
 
@@ -99,7 +102,7 @@ Finally, add the following to the xtask package's Cargo.toml:
 
 ```toml
 [dependencies]
-xtask-watch = "0.1.0"
+xtask-watch = "0.3.3"
 ```
 
 ## Examples
@@ -138,8 +141,8 @@ fn main() -> Result<()> {
 ### A more complex demonstration
 
 [`examples/demo`](https://github.com/rustminded/xtask-watch/tree/main/examples/demo) provides an
-implementation of xtask-watch that naively parse a command given by the user
-(or use `cargo check` by default) and watch the workspace after launching this command.
+implementation of xtask-watch that naively parses a command given by the user
+(or uses `cargo check` by default) and watches the workspace after launching this command.
 
 ## Troubleshooting
 
@@ -160,7 +163,7 @@ This occurs because you need to import clap in the scope too. This error can
 be resolved like this:
 
 ```rust
-use xtask_wasm::clap;
+use xtask_watch::clap;
 
 #[derive(clap::Parser)]
 ```
@@ -168,9 +171,7 @@ use xtask_wasm::clap;
 Or like this:
 
 ```rust
-use xtask_wasm::{clap, clap::Parser};
+use xtask_watch::{clap, clap::Parser};
 
 #[derive(Parser)]
 ```
-
-<!-- cargo-rdme end -->

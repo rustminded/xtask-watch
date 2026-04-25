@@ -1,16 +1,16 @@
 [package]
 name = "xtask-watch"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2024"
 rust-version = "1.85.1"
 license = "MIT OR Apache-2.0"
 description = "A customizable helper to watch for changes in your projects using xtask."
-homepage = "https://github.com/rustminded/xtask-wasm"
-documentation = "https://docs.rs/xtask-wasm"
+homepage = "https://github.com/rustminded/xtask-watch"
+documentation = "https://docs.rs/xtask-watch"
 readme = "README.md"
 categories = ["development-tools"]
 keywords = ["wasm", "cli"]
-include = ["src/**/*.rs", "README.md", "LICENSE.Apache-2.0", "LICENSE.MIT"]
+include = ["src/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE.Apache-2.0", "LICENSE.MIT"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
