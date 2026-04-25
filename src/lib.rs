@@ -293,6 +293,15 @@ impl Watch {
     ///
     /// Clone and share this lock with external code (e.g. HTTP handlers) to coordinate with
     /// watch-driven command execution.
+    ///
+    /// # Lock lifecycle
+    ///
+    /// [`run`](Self::run) acquires the **write lock immediately** when it is called — before the
+    /// first command is even spawned. Any code that calls [`WatchLock::acquire`] will therefore
+    /// block until the first build completes. This is intentional: it prevents readers from
+    /// observing an empty or incomplete dist directory before the initial build has finished.
+    /// The write lock is then re-acquired on every subsequent rebuild and released once the
+    /// command sequence succeeds.
     #[must_use = "store and share the lock with readers that must coordinate with rebuilds"]
     pub fn lock(&self) -> WatchLock {
         self.watch_lock.clone()
