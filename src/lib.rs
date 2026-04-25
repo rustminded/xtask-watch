@@ -325,7 +325,10 @@ impl Watch {
         let list = commands.into();
 
         {
-            let mut commands = list.commands.lock().expect("not poisoned");
+            let mut commands = list
+                .commands
+                .lock()
+                .expect("no panic-prone code runs while this lock is held");
 
             commands.extend(self.shell_commands.iter().map(|x| {
                 let mut command =
@@ -602,12 +605,18 @@ impl SharedChild {
     }
 
     fn replace(&mut self, child: impl Into<Option<Child>>) {
-        *self.child.lock().expect("not poisoned") = child.into();
+        *self
+            .child
+            .lock()
+            .expect("no panic-prone code runs while this lock is held") = child.into();
     }
 
     fn wait(&mut self) -> ExitStatus {
         loop {
-            let mut child = self.child.lock().expect("not poisoned");
+            let mut child = self
+                .child
+                .lock()
+                .expect("no panic-prone code runs while this lock is held");
             match child.as_mut().map(|child| child.try_wait()) {
                 Some(Ok(Some(status))) => {
                     break status;
@@ -628,7 +637,12 @@ impl SharedChild {
     }
 
     fn terminate(&mut self) {
-        if let Some(child) = self.child.lock().expect("not poisoned").as_mut() {
+        if let Some(child) = self
+            .child
+            .lock()
+            .expect("no panic-prone code runs while this lock is held")
+            .as_mut()
+        {
             #[cfg(unix)]
             {
                 let killing_start = Instant::now();
@@ -693,14 +707,22 @@ impl<const SIZE: usize> From<[Command; SIZE]> for CommandList {
 impl CommandList {
     /// Returns `true` if the list is empty.
     pub fn is_empty(&self) -> bool {
-        self.commands.lock().expect("not poisoned").is_empty()
+        self.commands
+            .lock()
+            .expect("no panic-prone code runs while this lock is held")
+            .is_empty()
     }
 
     /// Spawn each command of the list one after the other.
     ///
     /// The caller is responsible to wait the commands.
     pub fn spawn(&mut self, mut callback: impl FnMut(io::Result<Child>) -> bool) {
-        for process in self.commands.lock().expect("not poisoned").iter_mut() {
+        for process in self
+            .commands
+            .lock()
+            .expect("no panic-prone code runs while this lock is held")
+            .iter_mut()
+        {
             if !callback(process.spawn()) {
                 break;
             }
@@ -710,7 +732,12 @@ impl CommandList {
     /// Run all the commands sequentially using [`std::process::Command::status`] and stop at the
     /// first failure.
     pub fn status(&mut self) -> io::Result<ExitStatus> {
-        for process in self.commands.lock().expect("not poisoned").iter_mut() {
+        for process in self
+            .commands
+            .lock()
+            .expect("no panic-prone code runs while this lock is held")
+            .iter_mut()
+        {
             let exit_status = process.status()?;
             if !exit_status.success() {
                 return Ok(exit_status);
@@ -741,17 +768,16 @@ impl WatchLock {
     /// Multiple readers may hold this guard concurrently.
     pub fn acquire(&self) -> WatchLockGuard<'_> {
         WatchLockGuard {
-            _guard: self
-                .0
-                .read()
-                .expect("watch lock poisoned while acquiring read access"),
+            // The inner value is `()` — there is no data to corrupt, so we can
+            // always recover from a poisoned lock.
+            _guard: self.0.read().unwrap_or_else(|e| e.into_inner()),
         }
     }
 
     fn write(&self) -> RwLockWriteGuard<'_, ()> {
-        self.0
-            .write()
-            .expect("watch lock poisoned while acquiring write access")
+        // The inner value is `()` — there is no data to corrupt, so we can
+        // always recover from a poisoned lock.
+        self.0.write().unwrap_or_else(|e| e.into_inner())
     }
 }
 
