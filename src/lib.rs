@@ -370,12 +370,14 @@ impl Watch {
 
         let mut current_child = SharedChild::new();
         let mut lock_guard = Some(self.watch_lock.write());
+        let mut generation: u64 = 0;
         loop {
             if lock_guard.is_some() {
                 log::info!("Running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
                 let tx = tx.clone();
+                let build_id = generation;
                 thread::spawn(move || {
                     let mut status = ExitStatus::default();
 
@@ -394,7 +396,8 @@ impl Watch {
 
                     if status.success() {
                         log::info!("Command succeeded.");
-                        tx.send(Event::CommandSucceded).expect("can send");
+                        tx.send(Event::CommandSucceeded(build_id))
+                            .expect("can send");
                     } else if let Some(code) = status.code() {
                         log::error!("Command failed (exit code: {code})");
                     } else {
@@ -409,10 +412,16 @@ impl Watch {
                     if lock_guard.is_none() {
                         lock_guard = Some(self.watch_lock.write());
                     }
+                    generation += 1;
                     current_child.terminate();
                 }
-                Ok(Event::CommandSucceded) => {
+                Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
                     lock_guard.take();
+                }
+                Ok(Event::CommandSucceeded(build_id)) => {
+                    log::trace!(
+                        "Ignoring stale success from build {build_id} (current: {generation})"
+                    );
                 }
                 Err(_) => {
                     current_child.terminate();
@@ -736,7 +745,7 @@ impl WatchLock {
 
 #[derive(Debug)]
 enum Event {
-    CommandSucceded,
+    CommandSucceeded(u64),
     ChangeDetected,
 }
 
