@@ -369,16 +369,10 @@ impl Watch {
         }
 
         let mut current_child = SharedChild::new();
-        let mut lock_guard = None;
+        let mut lock_guard = Some(self.watch_lock.write());
         loop {
-            {
-                if lock_guard.is_none() {
-                    log::info!("Running command");
-                    lock_guard.replace(self.watch_lock.write());
-                } else {
-                    log::info!("Re-running command");
-                }
-
+            if lock_guard.is_some() {
+                log::info!("Running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
                 let tx = tx.clone();
@@ -413,6 +407,7 @@ impl Watch {
                 Ok(Event::ChangeDetected) => {
                     log::trace!("Changes detected, re-generating");
                     current_child.terminate();
+                    lock_guard = lock_guard.or_else(|| Some(self.watch_lock.write()));
                 }
                 Ok(Event::CommandSucceded) => {
                     lock_guard.take();
