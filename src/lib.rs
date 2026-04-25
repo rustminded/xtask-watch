@@ -350,11 +350,11 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel::<WatchMsg>();
 
         let handler = WatchEventHandler {
             watch: self.clone(),
-            tx,
+            tx: tx.clone(),
             command_start: Instant::now(),
         };
 
@@ -369,46 +369,81 @@ impl Watch {
         }
 
         let mut current_child = SharedChild::new();
+        let mut guard = Some(self.watch_lock.write());
+        let mut dirty = true;
+        let mut running = false;
+
         loop {
-            {
+            if dirty && !running {
                 log::info!("Re-running command");
+
+                if guard.is_none() {
+                    guard = Some(self.watch_lock.write());
+                }
+
+                dirty = false;
+                running = true;
+
+                let tx_build = tx.clone();
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
-                let lock = self.watch_lock.clone();
-                thread::spawn(move || {
-                    let mut status = ExitStatus::default();
 
-                    let _guard = lock.write();
+                thread::spawn(move || {
+                    let mut success = true;
+
                     list.spawn(|res| match res {
                         Err(err) => {
                             log::error!("Could not execute command: {err}");
+                            success = false;
                             false
                         }
                         Ok(child) => {
                             log::trace!("new child: {}", child.id());
                             current_child.replace(child);
-                            status = current_child.wait();
-                            status.success()
+
+                            let status = current_child.wait();
+                            if status.success() {
+                                true
+                            } else {
+                                if let Some(code) = status.code() {
+                                    log::error!("Command failed (exit code: {code})");
+                                } else {
+                                    log::error!("Command failed.");
+                                }
+                                success = false;
+                                false
+                            }
                         }
                     });
 
-                    if status.success() {
-                        log::info!("Command succeeded.");
-                    } else if let Some(code) = status.code() {
-                        log::error!("Command failed (exit code: {code})");
-                    } else {
-                        log::error!("Command failed.");
-                    }
+                    let _ = tx_build.send(WatchMsg::BuildDone { success });
                 });
             }
 
-            let res = rx.recv();
-            if res.is_ok() {
-                log::trace!("Changes detected, re-generating");
-            }
-            current_child.terminate();
-            if res.is_err() {
-                break;
+            match rx.recv() {
+                Ok(WatchMsg::FsChange) => {
+                    log::trace!("Changes detected, re-generating");
+                    dirty = true;
+
+                    if guard.is_none() {
+                        guard = Some(self.watch_lock.write());
+                    }
+
+                    current_child.terminate();
+                }
+                Ok(WatchMsg::BuildDone { success }) => {
+                    running = false;
+
+                    if success {
+                        if dirty {
+                            log::trace!("Changes detected during build, re-generating");
+                        } else {
+                            log::info!("Command succeeded.");
+                            guard = None;
+                        }
+                    }
+                }
+                Err(_) => break,
             }
         }
 
@@ -527,17 +562,24 @@ impl Watch {
     }
 }
 
+#[derive(Debug)]
 struct WatchEventHandler {
     watch: Watch,
-    tx: mpsc::Sender<()>,
+    tx: mpsc::Sender<WatchMsg>,
     command_start: Instant,
+}
+
+#[derive(Debug)]
+enum WatchMsg {
+    FsChange,
+    BuildDone { success: bool },
 }
 
 impl EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if (event.kind.is_modify() || event.kind.is_create() || event.kind.is_create())
+                if (event.kind.is_modify() || event.kind.is_create())
                     && event.paths.iter().any(|x| {
                         !self.watch.is_excluded_path(x)
                             && x.exists()
@@ -549,7 +591,7 @@ impl EventHandler for WatchEventHandler {
                     log::trace!("Changes detected in {event:?}");
                     self.command_start = Instant::now();
 
-                    self.tx.send(()).expect("can send");
+                    self.tx.send(WatchMsg::FsChange).expect("can send");
                 } else {
                     log::trace!("Ignoring changes in {event:?}");
                 }
