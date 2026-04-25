@@ -79,7 +79,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! xtask-watch = "0.1.0"
+//! xtask-watch = "0.3"
 //! ```
 //!
 //! # Examples
