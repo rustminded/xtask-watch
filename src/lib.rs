@@ -200,6 +200,9 @@ pub fn xtask_command() -> Command {
 
 /// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
+///
+/// Use [`Watch::lock`] to obtain a [`WatchLock`] that can be shared with external
+/// code (e.g. an HTTP server) to coordinate reads with ongoing rebuilds.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, Parser)]
 #[clap(about = "Watches over your project's source code.")]
