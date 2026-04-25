@@ -407,7 +407,9 @@ impl Watch {
                 Ok(Event::ChangeDetected) => {
                     log::trace!("Changes detected, re-generating");
                     current_child.terminate();
-                    lock_guard = lock_guard.or_else(|| Some(self.watch_lock.write()));
+                    if lock_guard.is_none() {
+                        lock_guard = Some(self.watch_lock.write());
+                    }
                 }
                 Ok(Event::CommandSucceded) => {
                     lock_guard.take();
