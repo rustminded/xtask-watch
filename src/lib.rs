@@ -162,7 +162,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use glob::Pattern;
 use lazy_static::lazy_static;
-use notify::{Event, EventHandler, RecursiveMode, Watcher};
+use notify::Watcher as _;
 use std::{
     env, io,
     path::{Path, PathBuf},
@@ -350,7 +350,7 @@ impl Watch {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let (tx, rx) = mpsc::channel::<WatchMsg>();
+        let (tx, rx) = mpsc::channel();
 
         let handler = WatchEventHandler {
             watch: self.clone(),
@@ -362,88 +362,65 @@ impl Watch {
             notify::recommended_watcher(handler).context("could not initialize watcher")?;
 
         for path in &self.watch_paths {
-            match watcher.watch(path, RecursiveMode::Recursive) {
+            match watcher.watch(path, notify::RecursiveMode::Recursive) {
                 Ok(()) => log::trace!("Watching {}", path.display()),
                 Err(err) => log::error!("cannot watch {}: {err}", path.display()),
             }
         }
 
         let mut current_child = SharedChild::new();
-        let mut guard = Some(self.watch_lock.write());
-        let mut dirty = true;
-        let mut running = false;
-
+        let mut lock_guard = None;
         loop {
-            if dirty && !running {
-                log::info!("Re-running command");
-
-                if guard.is_none() {
-                    guard = Some(self.watch_lock.write());
+            {
+                if lock_guard.is_none() {
+                    log::info!("Running command");
+                    lock_guard.replace(self.watch_lock.write());
+                } else {
+                    log::info!("Re-running command");
                 }
 
-                dirty = false;
-                running = true;
-
-                let tx_build = tx.clone();
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
-
+                let tx = tx.clone();
                 thread::spawn(move || {
-                    let mut success = true;
+                    let mut status = ExitStatus::default();
 
                     list.spawn(|res| match res {
                         Err(err) => {
                             log::error!("Could not execute command: {err}");
-                            success = false;
                             false
                         }
                         Ok(child) => {
-                            log::trace!("new child: {}", child.id());
+                            log::trace!("Child spawned PID: {}", child.id());
                             current_child.replace(child);
-
-                            let status = current_child.wait();
-                            if status.success() {
-                                true
-                            } else {
-                                if let Some(code) = status.code() {
-                                    log::error!("Command failed (exit code: {code})");
-                                } else {
-                                    log::error!("Command failed.");
-                                }
-                                success = false;
-                                false
-                            }
+                            status = current_child.wait();
+                            status.success()
                         }
                     });
 
-                    let _ = tx_build.send(WatchMsg::BuildDone { success });
+                    if status.success() {
+                        log::info!("Command succeeded.");
+                        tx.send(Event::CommandSucceded).expect("can send");
+                    } else if let Some(code) = status.code() {
+                        log::error!("Command failed (exit code: {code})");
+                    } else {
+                        log::error!("Command failed.");
+                    }
                 });
             }
 
             match rx.recv() {
-                Ok(WatchMsg::FsChange) => {
+                Ok(Event::ChangeDetected) => {
                     log::trace!("Changes detected, re-generating");
-                    dirty = true;
-
-                    if guard.is_none() {
-                        guard = Some(self.watch_lock.write());
-                    }
-
                     current_child.terminate();
                 }
-                Ok(WatchMsg::BuildDone { success }) => {
-                    running = false;
-
-                    if success {
-                        if dirty {
-                            log::trace!("Changes detected during build, re-generating");
-                        } else {
-                            log::info!("Command succeeded.");
-                            guard = None;
-                        }
-                    }
+                Ok(Event::CommandSucceded) => {
+                    lock_guard.take();
                 }
-                Err(_) => break,
+                Err(_) => {
+                    current_child.terminate();
+                    break;
+                }
             }
         }
 
@@ -562,21 +539,14 @@ impl Watch {
     }
 }
 
-#[derive(Debug)]
 struct WatchEventHandler {
     watch: Watch,
-    tx: mpsc::Sender<WatchMsg>,
+    tx: mpsc::Sender<Event>,
     command_start: Instant,
 }
 
-#[derive(Debug)]
-enum WatchMsg {
-    FsChange,
-    BuildDone { success: bool },
-}
-
-impl EventHandler for WatchEventHandler {
-    fn handle_event(&mut self, event: Result<Event, notify::Error>) {
+impl notify::EventHandler for WatchEventHandler {
+    fn handle_event(&mut self, event: Result<notify::Event, notify::Error>) {
         match event {
             Ok(event) => {
                 if (event.kind.is_modify() || event.kind.is_create())
@@ -591,7 +561,7 @@ impl EventHandler for WatchEventHandler {
                     log::trace!("Changes detected in {event:?}");
                     self.command_start = Instant::now();
 
-                    self.tx.send(WatchMsg::FsChange).expect("can send");
+                    self.tx.send(Event::ChangeDetected).expect("can send");
                 } else {
                     log::trace!("Ignoring changes in {event:?}");
                 }
@@ -765,6 +735,12 @@ impl WatchLock {
             .write()
             .expect("watch lock poisoned while acquiring write access")
     }
+}
+
+#[derive(Debug)]
+enum Event {
+    CommandSucceded,
+    ChangeDetected,
 }
 
 #[cfg(test)]
