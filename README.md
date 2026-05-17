@@ -102,7 +102,7 @@ Finally, add the following to the xtask package's Cargo.toml:
 
 ```toml
 [dependencies]
-xtask-watch = "0.3.3"
+xtask-watch = "0.3"
 ```
 
 ## Examples
@@ -166,6 +166,7 @@ be resolved like this:
 use xtask_watch::clap;
 
 #[derive(clap::Parser)]
+struct MyStruct {}
 ```
 
 Or like this:
@@ -174,4 +175,5 @@ Or like this:
 use xtask_watch::{clap, clap::Parser};
 
 #[derive(Parser)]
+struct MyStruct {}
 ```
