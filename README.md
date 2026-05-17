@@ -109,7 +109,7 @@ xtask-watch = "0.3.3"
 
 ### A basic implementation
 
-```rust
+```rust,no_run
 use std::process::Command;
 use xtask_watch::{
     anyhow::Result,
