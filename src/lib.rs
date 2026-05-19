@@ -71,11 +71,13 @@ pub struct Watch {
     /// Paths or glob patterns, relative to the workspace root, that will be excluded.
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
-    /// Throttle events to prevent the command to be re-executed too early
-    /// right after an execution already occurred.
+    /// Quiet period after the last detected change before the command is
+    /// (re)started. If another change arrives while a build is running the
+    /// build is cancelled and the timer resets, so only the latest state is
+    /// ever built.
     ///
-    /// The default is 2 seconds.
-    #[clap(skip = Duration::from_secs(2))]
+    /// The default is 1 second.
+    #[clap(skip = Duration::from_secs(1))]
     pub debounce: Duration,
     #[clap(skip)]
     exclude_globs: Vec<Pattern>,
@@ -153,7 +155,10 @@ impl Watch {
         self.watch_lock.clone()
     }
 
-    /// Set the debounce duration after relaunching the command.
+    /// Set the debounce quiet period.
+    ///
+    /// The command will not start (or restart) until no change has been
+    /// detected for this duration. The default is 1 second.
     pub fn debounce(mut self, duration: Duration) -> Self {
         self.debounce = duration;
         self
@@ -161,6 +166,11 @@ impl Watch {
 
     /// Run the given `command`, monitor the watched paths and relaunch the
     /// command when changes are detected.
+    ///
+    /// The command starts immediately. If a change is detected while it is
+    /// running, the command is cancelled and the debounce timer resets; the
+    /// command only restarts once the source tree has been quiet for the
+    /// configured [`debounce`](Self::debounce) duration.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
@@ -213,7 +223,6 @@ impl Watch {
         let handler = WatchEventHandler {
             watch: self.clone(),
             tx: tx.clone(),
-            command_start: Instant::now(),
         };
 
         let mut watcher =
@@ -229,8 +238,15 @@ impl Watch {
         let mut current_child = SharedChild::new();
         let mut lock_guard = Some(self.watch_lock.write());
         let mut generation: u64 = 0;
+
+        // `pending_build` tracks whether a change has arrived that has not yet
+        // been translated into a spawned command.  It starts as `true` so the
+        // first build fires immediately without waiting for a file-change event.
+        let mut pending_build = true;
+
         loop {
-            if lock_guard.is_some() {
+            if pending_build {
+                pending_build = false;
                 log::info!("Running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
@@ -264,31 +280,49 @@ impl Watch {
                 });
             }
 
-            match rx.recv() {
-                Ok(Event::ChangeDetected) => {
-                    log::trace!("Changes detected, re-generating");
-                    if lock_guard.is_none() {
-                        lock_guard = Some(self.watch_lock.write());
+            // Drain all events that arrive within the debounce window.  Each
+            // new event resets the timer; we only (re)build once things have
+            // been quiet for `debounce`.
+            loop {
+                match rx.recv_timeout(self.debounce) {
+                    Ok(Event::ChangeDetected) => {
+                        log::trace!("Change detected, resetting debounce timer");
+                        if !pending_build {
+                            // Cancel any in-progress build immediately so we
+                            // build the latest version, not an intermediate one.
+                            current_child.terminate();
+                            generation += 1;
+                            if lock_guard.is_none() {
+                                lock_guard = Some(self.watch_lock.write());
+                            }
+                            pending_build = true;
+                        }
+                        // Loop back to reset the recv_timeout.
                     }
-                    generation += 1;
-                    current_child.terminate();
-                }
-                Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
-                    lock_guard.take();
-                }
-                Ok(Event::CommandSucceeded(build_id)) => {
-                    log::trace!(
-                        "Ignoring stale success from build {build_id} (current: {generation})"
-                    );
-                }
-                Err(_) => {
-                    current_child.terminate();
-                    break;
+                    Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
+                        log::trace!("Command succeeded, releasing lock");
+                        lock_guard.take();
+                        // Continue waiting for the next change.
+                    }
+                    Ok(Event::CommandSucceeded(build_id)) => {
+                        log::trace!(
+                            "Ignoring stale success from build {build_id} (current: {generation})"
+                        );
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // Quiet for `debounce` — time to build if there is a
+                        // pending change.
+                        if pending_build {
+                            break;
+                        }
+                    }
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        current_child.terminate();
+                        return Ok(());
+                    }
                 }
             }
         }
-
-        Ok(())
     }
 
     fn is_excluded_path(&self, path: &Path) -> bool {
@@ -406,7 +440,6 @@ impl Watch {
 struct WatchEventHandler {
     watch: Watch,
     tx: mpsc::Sender<Event>,
-    command_start: Instant,
 }
 
 impl notify::EventHandler for WatchEventHandler {
@@ -419,12 +452,9 @@ impl notify::EventHandler for WatchEventHandler {
                             && x.exists()
                             && !self.watch.is_hidden_path(x)
                             && !self.watch.is_backup_file(x)
-                            && self.command_start.elapsed() >= self.watch.debounce
                     })
                 {
                     log::trace!("Changes detected in {event:?}");
-                    self.command_start = Instant::now();
-
                     self.tx.send(Event::ChangeDetected).expect("can send");
                 } else {
                     log::trace!("Ignoring changes in {event:?}");
