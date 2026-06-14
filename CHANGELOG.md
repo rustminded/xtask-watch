@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--commit` flag to also restart the command when git HEAD changes. (#36)
+
 ## [0.3.4] - 2026-05-17
 
 ### Fixed
