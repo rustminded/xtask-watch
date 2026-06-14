@@ -41,6 +41,55 @@ pub fn xtask_command() -> Command {
     Command::new(env::args_os().next().unwrap())
 }
 
+/// Resolve the actual git directory path via `git rev-parse --git-dir`.
+///
+/// Git handles regular repos, worktrees, and submodules transparently.
+fn resolve_git_dir(repo_root: &Path) -> Result<PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(repo_root)
+        .output()
+        .context("failed to run `git rev-parse --git-dir`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("not a git repository: {stderr}");
+    }
+
+    let dir = String::from_utf8(output.stdout).context("git output is not valid UTF-8")?;
+    let dir = dir.trim();
+
+    let path = if Path::new(dir).is_absolute() {
+        PathBuf::from(dir)
+    } else {
+        repo_root.join(dir)
+    };
+
+    path.canonicalize()
+        .with_context(|| format!("canonicalize git dir `{dir}`"))
+}
+
+/// Get the current HEAD commit hash via `git rev-parse HEAD`.
+fn get_current_head() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(metadata().workspace_root.as_std_path())
+        .output()
+        .context("failed to run `git rev-parse HEAD`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git rev-parse HEAD failed: {stderr}");
+    }
+
+    let hash = String::from_utf8(output.stdout)
+        .context("git output is not valid UTF-8")?
+        .trim()
+        .to_string();
+
+    Ok(hash)
+}
+
 /// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 ///
@@ -71,6 +120,14 @@ pub struct Watch {
     /// Paths or glob patterns, relative to the workspace root, that will be excluded.
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
+    /// Watch for commit changes in addition to file changes.
+    ///
+    /// Monitors the git directory (resolved via `git rev-parse --git-dir`)
+    /// for when the current git commit (HEAD) changes.
+    /// For worktrees, the watched directory is the git directory resolved
+    /// via `git rev-parse --git-dir`, not the workspace-local `.git` file.
+    #[clap(long = "commit")]
+    pub commit: bool,
     /// Throttle events to prevent the command to be re-executed too early
     /// right after an execution already occurred.
     ///
@@ -153,6 +210,12 @@ impl Watch {
         self.watch_lock.clone()
     }
 
+    /// Enable commit mode: also restart the command when the git HEAD changes.
+    pub fn commit(mut self) -> Self {
+        self.commit = true;
+        self
+    }
+
     /// Set the debounce duration after relaunching the command.
     pub fn debounce(mut self, duration: Duration) -> Self {
         self.debounce = duration;
@@ -194,6 +257,15 @@ impl Watch {
 
         self.prepare_excludes()?;
 
+        let git_dirs: Vec<PathBuf> = if self.commit {
+            let git_dir = resolve_git_dir(metadata.workspace_root.as_std_path())
+                .context("--commit requires a git repository")?;
+            self.watch_paths.push(git_dir.clone());
+            vec![git_dir]
+        } else {
+            Vec::new()
+        };
+
         if self.watch_paths.is_empty() {
             self.watch_paths
                 .push(metadata.workspace_root.clone().into_std_path_buf());
@@ -210,10 +282,24 @@ impl Watch {
 
         let (tx, rx) = mpsc::channel();
 
+        let current_commit = if self.commit {
+            match get_current_head() {
+                Ok(hash) => Some(hash),
+                Err(err) => {
+                    log::warn!("failed to read initial git HEAD: {err:?}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         let handler = WatchEventHandler {
             watch: self.clone(),
             tx: tx.clone(),
             command_start: Instant::now(),
+            current_commit,
+            git_dirs,
         };
 
         let mut watcher =
@@ -407,31 +493,69 @@ struct WatchEventHandler {
     watch: Watch,
     tx: mpsc::Sender<Event>,
     command_start: Instant,
+    current_commit: Option<String>,
+    git_dirs: Vec<PathBuf>,
 }
 
 impl notify::EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<notify::Event, notify::Error>) {
-        match event {
-            Ok(event) => {
-                if (event.kind.is_modify() || event.kind.is_create())
-                    && event.paths.iter().any(|x| {
-                        !self.watch.is_excluded_path(x)
-                            && x.exists()
-                            && !self.watch.is_hidden_path(x)
-                            && !self.watch.is_backup_file(x)
-                            && self.command_start.elapsed() >= self.watch.debounce
-                    })
-                {
-                    log::trace!("Changes detected in {event:?}");
-                    self.command_start = Instant::now();
-
-                    self.tx.send(Event::ChangeDetected).expect("can send");
-                } else {
-                    log::trace!("Ignoring changes in {event:?}");
-                }
+        let event = match event {
+            Ok(event) => event,
+            Err(err) => {
+                log::error!("watch error: {err}");
+                return;
             }
-            Err(err) => log::error!("watch error: {err}"),
+        };
+
+        if self.command_start.elapsed() < self.watch.debounce {
+            log::trace!("Ignoring changes (debounce): {event:?}");
+            return;
         }
+
+        let valid: Vec<_> = event
+            .paths
+            .iter()
+            .filter(|x| {
+                (event.kind.is_modify() || event.kind.is_create())
+                    && !self.watch.is_excluded_path(x)
+                    && x.exists()
+                    && !self.watch.is_hidden_path(x)
+                    && !self.watch.is_backup_file(x)
+            })
+            .collect();
+
+        if valid.is_empty() {
+            log::trace!("Ignoring changes in {event:?}");
+            return;
+        }
+
+        if self.watch.commit {
+            let all_under_git = valid
+                .iter()
+                .all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)));
+
+            if all_under_git {
+                match get_current_head() {
+                    Ok(hash) if Some(hash.as_str()) != self.current_commit.as_deref() => {
+                        log::trace!("HEAD changed: {:?} -> {hash}", self.current_commit);
+                        self.current_commit = Some(hash);
+                        self.command_start = Instant::now();
+                        self.tx.send(Event::ChangeDetected).expect("can send");
+                    }
+                    Ok(_) => {
+                        log::trace!("HEAD unchanged, ignoring event");
+                    }
+                    Err(err) => {
+                        log::error!("failed to read git HEAD: {err}");
+                    }
+                }
+                return;
+            }
+        }
+
+        log::trace!("Changes detected in {event:?}");
+        self.command_start = Instant::now();
+        self.tx.send(Event::ChangeDetected).expect("can send");
     }
 }
 
