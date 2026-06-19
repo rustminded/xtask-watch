@@ -8,7 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - `--commit` flag to also restart the command when git HEAD changes. (#36)
+
+## [0.3.5] - 2026-06-02
+
+### Changed
+
+- Replace throttle-based debounce with a true debounce: the command now starts
+  only after the source tree has been quiet for the debounce period (default
+  changed from 2 s to 1 s). Changes that arrive while a build is running cancel
+  it immediately and reset the timer, so only the latest version is ever built.
 
 ## [0.3.4] - 2026-05-17
 
@@ -48,7 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Updated dependencies and workflow (#29)
 
-[Unreleased]: https://github.com/rustminded/xtask-watch/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/rustminded/xtask-watch/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/rustminded/xtask-watch/compare/v0.3.4...v0.3.5
+[0.3.4]: https://github.com/rustminded/xtask-watch/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/rustminded/xtask-watch/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/rustminded/xtask-watch/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/rustminded/xtask-watch/compare/v0.3.0...v0.3.1
