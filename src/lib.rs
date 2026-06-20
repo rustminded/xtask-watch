@@ -534,18 +534,27 @@ impl notify::EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<notify::Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if (event.kind.is_modify() || event.kind.is_create())
-                    && event.paths.iter().any(|x| {
-                        !self.watch.is_excluded_path(x)
-                            && x.exists()
-                            && !self.watch.is_hidden_path(x)
-                            && !self.watch.is_backup_file(x)
-                    })
-                {
-                    if event
+                if event.kind.is_modify() || event.kind.is_create() {
+                    let valids = event
                         .paths
                         .iter()
-                        .all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
+                        .filter(|x| {
+                            x.exists()
+                                && !self.watch.is_excluded_path(x)
+                                && !self.watch.is_hidden_path(x)
+                                && !self.watch.is_backup_file(x)
+                        })
+                        .collect::<Vec<_>>();
+
+                    if valids.is_empty() {
+                        log::trace!("Ignoring changes in {event:?}");
+                        return;
+                    }
+
+                    if self.watch.commit
+                        && valids
+                            .iter()
+                            .all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
                     {
                         match get_current_head() {
                             Ok(hash) if Some(hash.as_str()) != self.current_commit.as_deref() => {

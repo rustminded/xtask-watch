@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `--commit` flag to also restart the command when git HEAD changes. (#36)
 
+### Changed
+
+- Commit-change detection now considers only valid event paths (existing, non-excluded,
+  non-hidden, non-backup files), ignoring stale or deleted paths that could previously
+  cause a `ChangeDetected` event to be emitted instead. (#36)
+
 ## [0.3.5] - 2026-06-02
 
 ### Changed
