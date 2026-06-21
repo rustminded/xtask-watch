@@ -457,6 +457,13 @@ impl Watch {
         })
     }
 
+    fn is_valid_path(&self, path: &Path) -> bool {
+        path.exists()
+            && !self.is_excluded_path(path)
+            && !self.is_hidden_path(path)
+            && !self.is_backup_file(path)
+    }
+
     fn is_glob_pattern(path: &Path) -> bool {
         let s = path.as_os_str().to_string_lossy();
         s.contains('*') || s.contains('?') || (!cfg!(windows) && s.contains('['))
@@ -535,26 +542,19 @@ impl notify::EventHandler for WatchEventHandler {
         match event {
             Ok(event) => {
                 if event.kind.is_modify() || event.kind.is_create() {
-                    let valids = event
+                    let mut valid_paths = event
                         .paths
                         .iter()
-                        .filter(|x| {
-                            x.exists()
-                                && !self.watch.is_excluded_path(x)
-                                && !self.watch.is_hidden_path(x)
-                                && !self.watch.is_backup_file(x)
-                        })
-                        .collect::<Vec<_>>();
+                        .filter(|p| self.watch.is_valid_path(p))
+                        .peekable();
 
-                    if valids.is_empty() {
-                        log::trace!("Ignoring changes in {event:?}");
+                    if valid_paths.peek().is_none() {
+                        log::trace!("No valid paths in {event:?}, ignoring");
                         return;
                     }
 
                     if self.watch.commit
-                        && valids
-                            .iter()
-                            .all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
+                        && valid_paths.all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
                     {
                         match get_current_head() {
                             Ok(hash) if Some(hash.as_str()) != self.current_commit.as_deref() => {
@@ -575,7 +575,7 @@ impl notify::EventHandler for WatchEventHandler {
                     log::trace!("Changes detected in {event:?}");
                     self.tx.send(Event::ChangeDetected).expect("can send");
                 } else {
-                    log::trace!("Ignoring changes in {event:?}");
+                    log::trace!("Ignoring non-create/modify event: {event:?}");
                 }
             }
             Err(err) => log::error!("watch error: {err}"),
