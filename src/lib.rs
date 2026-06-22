@@ -318,13 +318,7 @@ impl Watch {
         // first build fires immediately without waiting for a file-change event.
         let mut pending_build = true;
         let mut current_commit = if self.commit {
-            match get_current_head() {
-                Ok(hash) => Some(hash),
-                Err(err) => {
-                    log::warn!("failed to read initial git HEAD: {err:?}");
-                    None
-                }
-            }
+            Some(get_current_head()?)
         } else {
             None
         };
