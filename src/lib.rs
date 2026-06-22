@@ -319,14 +319,6 @@ impl Watch {
         let mut has_file_changes = false;
 
         loop {
-            // Poll for build completion before acting on pending state.
-            if let Some(succeeded) = exec.take_result() {
-                if succeeded {
-                    log::trace!("Command succeeded, releasing lock");
-                    lock_guard.take();
-                }
-            }
-
             if pending_build {
                 pending_build = false;
                 has_file_changes = false;
@@ -338,14 +330,6 @@ impl Watch {
             // new event resets the timer; we only (re)build once things have
             // been quiet for `debounce`.
             loop {
-                // Poll for build completion between debounce waits.
-                if let Some(succeeded) = exec.take_result() {
-                    if succeeded {
-                        log::trace!("Command succeeded, releasing lock");
-                        lock_guard.take();
-                    }
-                }
-
                 match rx.recv_timeout(self.debounce) {
                     Ok(WatchEvent::ChangeDetected { git }) => {
                         if git {
