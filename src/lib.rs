@@ -396,24 +396,23 @@ impl Watch {
                         // Quiet for `debounce` — time to build if there is a
                         // pending change.
                         if pending_build {
-                            // Only check HEAD if commit mode and no real file changes.
-                            if self.commit && !has_file_changes {
-                                match get_current_head() {
-                                    Ok(hash)
-                                        if Some(hash.as_str()) != current_commit.as_deref() =>
-                                    {
-                                        log::trace!("HEAD changed: {:?} -> {hash}", current_commit);
-                                        current_commit = Some(hash);
-                                    }
-                                    Ok(_) => {
-                                        log::trace!("HEAD unchanged, skipping build");
-                                        pending_build = false;
-                                        continue;
-                                    }
-                                    Err(err) => {
-                                        log::error!("failed to read git HEAD: {err}");
-                                        pending_build = false;
-                                        continue;
+                            if !has_file_changes {
+                                if let Some(current_hash) = &current_commit {
+                                    match get_current_head() {
+                                        Ok(hash) if &hash != current_hash => {
+                                            log::trace!("HEAD changed: {:?} -> {hash}", current_commit);
+                                            current_commit = Some(hash);
+                                        }
+                                        Ok(_) => {
+                                            log::trace!("HEAD unchanged, skipping build");
+                                            pending_build = false;
+                                            continue;
+                                        }
+                                        Err(err) => {
+                                            log::error!("failed to read git HEAD: {err}");
+                                            pending_build = false;
+                                            continue;
+                                        }
                                     }
                                 }
                             }
