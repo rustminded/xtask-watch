@@ -17,9 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directories, fixing an issue where `--commit` could not detect git changes when
   the watch path was a parent of `.git`. (#36)
 
-- Commit-change detection now ignores stale or deleted paths that could previously
-  trigger a spurious `ChangeDetected` event. (#36)
-
 ## [0.3.5] - 2026-06-02
 
 ### Changed
