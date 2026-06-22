@@ -292,22 +292,9 @@ impl Watch {
 
         let (tx, rx) = mpsc::channel();
 
-        let current_commit = if self.commit {
-            match get_current_head() {
-                Ok(hash) => Some(hash),
-                Err(err) => {
-                    log::warn!("failed to read initial git HEAD: {err:?}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
         let handler = WatchEventHandler {
             watch: self.clone(),
             tx: tx.clone(),
-            current_commit,
             git_dirs,
         };
 
@@ -329,10 +316,23 @@ impl Watch {
         // been translated into a spawned command.  It starts as `true` so the
         // first build fires immediately without waiting for a file-change event.
         let mut pending_build = true;
+        let mut current_commit = if self.commit {
+            match get_current_head() {
+                Ok(hash) => Some(hash),
+                Err(err) => {
+                    log::warn!("failed to read initial git HEAD: {err:?}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mut has_file_changes = false;
 
         loop {
             if pending_build {
                 pending_build = false;
+                has_file_changes = false;
                 log::info!("Running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
@@ -373,6 +373,7 @@ impl Watch {
                 match rx.recv_timeout(self.debounce) {
                     Ok(Event::ChangeDetected) => {
                         log::trace!("Change detected, resetting debounce timer");
+                        has_file_changes = true;
                         if !pending_build {
                             // Cancel any in-progress build immediately so we
                             // build the latest version, not an intermediate one.
@@ -384,6 +385,17 @@ impl Watch {
                             pending_build = true;
                         }
                         // Loop back to reset the recv_timeout.
+                    }
+                    Ok(Event::GitDirChangeDetected) => {
+                        log::trace!("Git directory change detected, resetting debounce timer");
+                        if !pending_build {
+                            current_child.terminate();
+                            generation += 1;
+                            if lock_guard.is_none() {
+                                lock_guard = Some(self.watch_lock.write());
+                            }
+                            pending_build = true;
+                        }
                     }
                     Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
                         log::trace!("Command succeeded, releasing lock");
@@ -399,6 +411,27 @@ impl Watch {
                         // Quiet for `debounce` — time to build if there is a
                         // pending change.
                         if pending_build {
+                            // Only check HEAD if commit mode and no real file changes.
+                            if self.commit && !has_file_changes {
+                                match get_current_head() {
+                                    Ok(hash)
+                                        if Some(hash.as_str()) != current_commit.as_deref() =>
+                                    {
+                                        log::trace!("HEAD changed: {:?} -> {hash}", current_commit);
+                                        current_commit = Some(hash);
+                                    }
+                                    Ok(_) => {
+                                        log::trace!("HEAD unchanged, skipping build");
+                                        pending_build = false;
+                                        continue;
+                                    }
+                                    Err(err) => {
+                                        log::error!("failed to read git HEAD: {err}");
+                                        pending_build = false;
+                                        continue;
+                                    }
+                                }
+                            }
                             break;
                         }
                     }
@@ -533,7 +566,6 @@ impl Watch {
 struct WatchEventHandler {
     watch: Watch,
     tx: mpsc::Sender<Event>,
-    current_commit: Option<String>,
     git_dirs: Vec<PathBuf>,
 }
 
@@ -556,20 +588,9 @@ impl notify::EventHandler for WatchEventHandler {
                     if self.watch.commit
                         && valid_paths.all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
                     {
-                        match get_current_head() {
-                            Ok(hash) if Some(hash.as_str()) != self.current_commit.as_deref() => {
-                                log::trace!("HEAD changed: {:?} -> {hash}", self.current_commit);
-                                self.current_commit = Some(hash);
-                            }
-                            Ok(_) => {
-                                log::trace!("HEAD unchanged, ignoring event");
-                                return;
-                            }
-                            Err(err) => {
-                                log::error!("failed to read git HEAD: {err}");
-                                return;
-                            }
-                        }
+                        log::trace!("Git directory change detected in {event:?}");
+                        self.tx.send(Event::GitDirChangeDetected).expect("can send");
+                        return;
                     }
 
                     log::trace!("Changes detected in {event:?}");
@@ -776,6 +797,7 @@ impl WatchLock {
 enum Event {
     CommandSucceeded(u64),
     ChangeDetected,
+    GitDirChangeDetected,
 }
 
 #[cfg(test)]
