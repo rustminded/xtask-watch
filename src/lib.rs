@@ -237,34 +237,30 @@ impl Watch {
     /// configured [`debounce`](Self::debounce) duration.
     ///
     /// Workspace's `target` directory and hidden paths are excluded by default.
+    ///
+    /// If `--exec` or `--shell` flags are provided, the `commands` argument is ignored
+    /// and only the commands supplied from them are run.
     pub fn run(mut self, commands: impl Into<CommandList>) -> Result<()> {
         let metadata = metadata();
-        let list = commands.into();
 
-        {
-            let mut commands = list
-                .commands
-                .lock()
-                .expect("no panic-prone code runs while this lock is held");
-
-            commands.extend(self.shell_commands.iter().map(|x| {
-                let mut command =
-                    Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
-                command.arg("-c");
-                command.arg(x);
-
-                command
-            }));
-
-            commands.extend(self.cargo_commands.iter().map(|x| {
-                let mut command =
-                    Command::new(env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string()));
-                command.arg("-c");
-                command.arg(format!("cargo {x}"));
-
-                command
-            }));
-        }
+        let list = if self.cargo_commands.is_empty() && self.shell_commands.is_empty() {
+            commands.into()
+        } else {
+            let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+            self.shell_commands
+                .iter()
+                .map(|x| {
+                    let mut cmd = Command::new(&shell);
+                    cmd.args(["-c", x]);
+                    cmd
+                })
+                .chain(self.cargo_commands.iter().map(|x| {
+                    let mut cmd = Command::new(&shell);
+                    cmd.args(["-c", format!("cargo {x}").as_ref()]);
+                    cmd
+                }))
+                .collect::<CommandList>()
+        };
 
         self.prepare_excludes()?;
 
@@ -694,30 +690,6 @@ pub struct CommandList {
     commands: Arc<Mutex<Vec<Command>>>,
 }
 
-impl From<Command> for CommandList {
-    fn from(command: Command) -> Self {
-        Self {
-            commands: Arc::new(Mutex::new(vec![command])),
-        }
-    }
-}
-
-impl From<Vec<Command>> for CommandList {
-    fn from(commands: Vec<Command>) -> Self {
-        Self {
-            commands: Arc::new(Mutex::new(commands)),
-        }
-    }
-}
-
-impl<const SIZE: usize> From<[Command; SIZE]> for CommandList {
-    fn from(commands: [Command; SIZE]) -> Self {
-        Self {
-            commands: Arc::new(Mutex::new(Vec::from(commands))),
-        }
-    }
-}
-
 impl CommandList {
     /// Returns `true` if the list is empty.
     pub fn is_empty(&self) -> bool {
@@ -758,6 +730,38 @@ impl CommandList {
             }
         }
         Ok(Default::default())
+    }
+}
+
+impl From<Command> for CommandList {
+    fn from(command: Command) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(vec![command])),
+        }
+    }
+}
+
+impl From<Vec<Command>> for CommandList {
+    fn from(commands: Vec<Command>) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(commands)),
+        }
+    }
+}
+
+impl<const SIZE: usize> From<[Command; SIZE]> for CommandList {
+    fn from(commands: [Command; SIZE]) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(Vec::from(commands))),
+        }
+    }
+}
+
+impl FromIterator<Command> for CommandList {
+    fn from_iter<T: IntoIterator<Item = Command>>(iter: T) -> Self {
+        Self {
+            commands: Arc::new(Mutex::new(iter.into_iter().collect())),
+        }
     }
 }
 
