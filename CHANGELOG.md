@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--commit` flag to restart the command when git HEAD changes. (#36)
+
+### Fixed
+
+- `is_hidden_path` no longer filters out paths under explicitly-watched hidden
+  directories, fixing an issue where `--commit` could not detect git changes when
+  the watch path was a parent of `.git`. (#36)
+
 ## [0.3.5] - 2026-06-02
 
 ### Changed

@@ -41,6 +41,56 @@ pub fn xtask_command() -> Command {
     Command::new(env::args_os().next().unwrap())
 }
 
+/// Resolve the actual git directory path via `git rev-parse --git-dir`.
+///
+/// Git handles regular repos, worktrees, and submodules transparently.
+fn resolve_git_dir() -> Result<PathBuf> {
+    let repo_root = metadata().workspace_root.as_std_path();
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .current_dir(repo_root)
+        .output()
+        .context("failed to run `git rev-parse --git-dir`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("not a git repository: {stderr}");
+    }
+
+    let dir = String::from_utf8(output.stdout).context("git output is not valid UTF-8")?;
+    let dir = dir.trim();
+
+    let path = if Path::new(dir).is_absolute() {
+        PathBuf::from(dir)
+    } else {
+        repo_root.join(dir)
+    };
+
+    path.canonicalize()
+        .with_context(|| format!("canonicalize git dir `{dir}`"))
+}
+
+/// Get the current HEAD commit hash via `git rev-parse HEAD`.
+fn get_current_head() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(metadata().workspace_root.as_std_path())
+        .output()
+        .context("failed to run `git rev-parse HEAD`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git rev-parse HEAD failed: {stderr}");
+    }
+
+    let hash = String::from_utf8(output.stdout)
+        .context("git output is not valid UTF-8")?
+        .trim()
+        .to_string();
+
+    Ok(hash)
+}
+
 /// Watches over your project's source code, relaunching a given command when
 /// changes are detected.
 ///
@@ -71,6 +121,14 @@ pub struct Watch {
     /// Paths or glob patterns, relative to the workspace root, that will be excluded.
     #[clap(skip)]
     pub workspace_exclude_paths: Vec<PathBuf>,
+    /// Watch for commit changes in addition to file changes.
+    ///
+    /// Monitors the git directory (resolved via `git rev-parse --git-dir`)
+    /// for when the current git commit (HEAD) changes.
+    /// For worktrees, the watched directory is the git directory resolved
+    /// via `git rev-parse --git-dir`, not the workspace-local `.git` file.
+    #[clap(long = "commit")]
+    pub commit: bool,
     /// Quiet period after the last detected change before the command is
     /// (re)started. If another change arrives while a build is running the
     /// build is cancelled and the timer resets, so only the latest state is
@@ -155,6 +213,12 @@ impl Watch {
         self.watch_lock.clone()
     }
 
+    /// Enable commit mode: also restart the command when the git HEAD changes.
+    pub fn commit(mut self) -> Self {
+        self.commit = true;
+        self
+    }
+
     /// Set the debounce quiet period.
     ///
     /// The command will not start (or restart) until no change has been
@@ -204,6 +268,14 @@ impl Watch {
 
         self.prepare_excludes()?;
 
+        let git_dirs: Vec<PathBuf> = if self.commit {
+            let git_dir = resolve_git_dir().context("--commit requires a git repository")?;
+            self.watch_paths.push(git_dir.clone());
+            vec![git_dir]
+        } else {
+            Vec::new()
+        };
+
         if self.watch_paths.is_empty() {
             self.watch_paths
                 .push(metadata.workspace_root.clone().into_std_path_buf());
@@ -223,6 +295,7 @@ impl Watch {
         let handler = WatchEventHandler {
             watch: self.clone(),
             tx: tx.clone(),
+            git_dirs,
         };
 
         let mut watcher =
@@ -243,10 +316,17 @@ impl Watch {
         // been translated into a spawned command.  It starts as `true` so the
         // first build fires immediately without waiting for a file-change event.
         let mut pending_build = true;
+        let mut current_commit = if self.commit {
+            Some(get_current_head()?)
+        } else {
+            None
+        };
+        let mut has_file_changes = false;
 
         loop {
             if pending_build {
                 pending_build = false;
+                has_file_changes = false;
                 log::info!("Running command");
                 let mut current_child = current_child.clone();
                 let mut list = list.clone();
@@ -285,11 +365,14 @@ impl Watch {
             // been quiet for `debounce`.
             loop {
                 match rx.recv_timeout(self.debounce) {
-                    Ok(Event::ChangeDetected) => {
-                        log::trace!("Change detected, resetting debounce timer");
+                    Ok(Event::ChangeDetected { git }) => {
+                        if git {
+                            log::trace!("Git directory change detected, resetting debounce timer");
+                        } else {
+                            log::trace!("Change detected, resetting debounce timer");
+                            has_file_changes = true;
+                        }
                         if !pending_build {
-                            // Cancel any in-progress build immediately so we
-                            // build the latest version, not an intermediate one.
                             current_child.terminate();
                             generation += 1;
                             if lock_guard.is_none() {
@@ -297,7 +380,6 @@ impl Watch {
                             }
                             pending_build = true;
                         }
-                        // Loop back to reset the recv_timeout.
                     }
                     Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
                         log::trace!("Command succeeded, releasing lock");
@@ -313,6 +395,29 @@ impl Watch {
                         // Quiet for `debounce` — time to build if there is a
                         // pending change.
                         if pending_build {
+                            if !has_file_changes {
+                                if let Some(current_hash) = &current_commit {
+                                    match get_current_head() {
+                                        Ok(hash) if &hash != current_hash => {
+                                            log::trace!(
+                                                "HEAD changed: {:?} -> {hash}",
+                                                current_commit
+                                            );
+                                            current_commit = Some(hash);
+                                        }
+                                        Ok(_) => {
+                                            log::trace!("HEAD unchanged, skipping build");
+                                            pending_build = false;
+                                            continue;
+                                        }
+                                        Err(err) => {
+                                            log::error!("failed to read git HEAD: {err}");
+                                            pending_build = false;
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
                             break;
                         }
                     }
@@ -356,6 +461,18 @@ impl Watch {
     }
 
     fn is_hidden_path(&self, path: &Path) -> bool {
+        // If the path is under a watch path whose last component starts
+        // with '.', the user explicitly opted into watching it — don't
+        // treat it as hidden (e.g. --commit adds .git/ to watch_paths).
+        if self.watch_paths.iter().any(|x| {
+            x.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.starts_with('.'))
+                && path.starts_with(x)
+        }) {
+            return false;
+        }
+
         self.watch_paths.iter().any(|x| {
             path.strip_prefix(x)
                 .iter()
@@ -369,6 +486,13 @@ impl Watch {
                 .iter()
                 .any(|x| x.to_string_lossy().ends_with('~'))
         })
+    }
+
+    fn is_valid_path(&self, path: &Path) -> bool {
+        path.exists()
+            && !self.is_excluded_path(path)
+            && !self.is_hidden_path(path)
+            && !self.is_backup_file(path)
     }
 
     fn is_glob_pattern(path: &Path) -> bool {
@@ -440,28 +564,45 @@ impl Watch {
 struct WatchEventHandler {
     watch: Watch,
     tx: mpsc::Sender<Event>,
+    git_dirs: Vec<PathBuf>,
 }
 
 impl notify::EventHandler for WatchEventHandler {
     fn handle_event(&mut self, event: Result<notify::Event, notify::Error>) {
         match event {
             Ok(event) => {
-                if (event.kind.is_modify() || event.kind.is_create())
-                    && event.paths.iter().any(|x| {
-                        !self.watch.is_excluded_path(x)
-                            && x.exists()
-                            && !self.watch.is_hidden_path(x)
-                            && !self.watch.is_backup_file(x)
-                    })
-                {
+                if event.kind.is_modify() || event.kind.is_create() {
+                    let mut valid_paths = event
+                        .paths
+                        .iter()
+                        .filter(|p| self.watch.is_valid_path(p))
+                        .peekable();
+
+                    if valid_paths.peek().is_none() {
+                        log::trace!("No valid paths in {event:?}, ignoring");
+                        return;
+                    }
+
+                    if self.watch.commit
+                        && valid_paths.all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
+                    {
+                        log::trace!("Git directory change detected in {event:?}");
+                        self.tx
+                            .send(Event::ChangeDetected { git: true })
+                            .expect("can send");
+                        return;
+                    }
+
                     log::trace!("Changes detected in {event:?}");
-                    self.tx.send(Event::ChangeDetected).expect("can send");
+                    self.tx
+                        .send(Event::ChangeDetected { git: false })
+                        .expect("can send");
                 } else {
-                    log::trace!("Ignoring changes in {event:?}");
+                    log::trace!("Ignoring non-create/modify event: {event:?}");
                 }
             }
             Err(err) => log::error!("watch error: {err}"),
-        }
+        };
     }
 }
 
@@ -657,7 +798,7 @@ impl WatchLock {
 #[derive(Debug)]
 enum Event {
     CommandSucceeded(u64),
-    ChangeDetected,
+    ChangeDetected { git: bool },
 }
 
 #[cfg(test)]
