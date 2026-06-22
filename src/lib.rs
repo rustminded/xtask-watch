@@ -475,6 +475,18 @@ impl Watch {
     }
 
     fn is_hidden_path(&self, path: &Path) -> bool {
+        // If the path is under a watch path whose last component starts
+        // with '.', the user explicitly opted into watching it — don't
+        // treat it as hidden (e.g. --commit adds .git/ to watch_paths).
+        if self.watch_paths.iter().any(|x| {
+            x.file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|s| s.starts_with('.'))
+                && path.starts_with(x)
+        }) {
+            return false;
+        }
+
         self.watch_paths.iter().any(|x| {
             path.strip_prefix(x)
                 .iter()

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   non-hidden, non-backup files), ignoring stale or deleted paths that could previously
   cause a `ChangeDetected` event to be emitted instead. (#36)
 
+### Fixed
+
+- When `--commit` is used alongside a watch path that is a parent of `.git`,
+  git directory changes were incorrectly filtered out by the hidden-path check.
+  `is_hidden_path` now allows paths under explicitly-watched hidden directories. (#36)
+
 ## [0.3.5] - 2026-06-02
 
 ### Changed
