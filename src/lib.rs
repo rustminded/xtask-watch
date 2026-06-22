@@ -269,8 +269,7 @@ impl Watch {
         self.prepare_excludes()?;
 
         let git_dirs: Vec<PathBuf> = if self.commit {
-            let git_dir = resolve_git_dir()
-                .context("--commit requires a git repository")?;
+            let git_dir = resolve_git_dir().context("--commit requires a git repository")?;
             self.watch_paths.push(git_dir.clone());
             vec![git_dir]
         } else {
@@ -400,7 +399,10 @@ impl Watch {
                                 if let Some(current_hash) = &current_commit {
                                     match get_current_head() {
                                         Ok(hash) if &hash != current_hash => {
-                                            log::trace!("HEAD changed: {:?} -> {hash}", current_commit);
+                                            log::trace!(
+                                                "HEAD changed: {:?} -> {hash}",
+                                                current_commit
+                                            );
                                             current_commit = Some(hash);
                                         }
                                         Ok(_) => {
