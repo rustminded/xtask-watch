@@ -44,7 +44,8 @@ pub fn xtask_command() -> Command {
 /// Resolve the actual git directory path via `git rev-parse --git-dir`.
 ///
 /// Git handles regular repos, worktrees, and submodules transparently.
-fn resolve_git_dir(repo_root: &Path) -> Result<PathBuf> {
+fn resolve_git_dir() -> Result<PathBuf> {
+    let repo_root = metadata().workspace_root.as_std_path();
     let output = Command::new("git")
         .args(["rev-parse", "--git-dir"])
         .current_dir(repo_root)
@@ -268,7 +269,7 @@ impl Watch {
         self.prepare_excludes()?;
 
         let git_dirs: Vec<PathBuf> = if self.commit {
-            let git_dir = resolve_git_dir(metadata.workspace_root.as_std_path())
+            let git_dir = resolve_git_dir()
                 .context("--commit requires a git repository")?;
             self.watch_paths.push(git_dir.clone());
             vec![git_dir]
