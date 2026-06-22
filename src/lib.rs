@@ -304,9 +304,8 @@ impl Watch {
             }
         }
 
-        let mut current_child = SharedChild::new();
+        let mut exec = Executor::new();
         let mut lock_guard = Some(self.watch_lock.write());
-        let mut generation: u64 = 0;
 
         // `pending_build` tracks whether a change has arrived that has not yet
         // been translated into a spawned command.  It starts as `true` so the
@@ -320,48 +319,35 @@ impl Watch {
         let mut has_file_changes = false;
 
         loop {
+            // Poll for build completion before acting on pending state.
+            if let Some(succeeded) = exec.take_result() {
+                if succeeded {
+                    log::trace!("Command succeeded, releasing lock");
+                    lock_guard.take();
+                }
+            }
+
             if pending_build {
                 pending_build = false;
                 has_file_changes = false;
                 log::info!("Running command");
-                let mut current_child = current_child.clone();
-                let mut list = list.clone();
-                let tx = tx.clone();
-                let build_id = generation;
-                thread::spawn(move || {
-                    let mut status = ExitStatus::default();
-
-                    list.spawn(|res| match res {
-                        Err(err) => {
-                            log::error!("Could not execute command: {err}");
-                            false
-                        }
-                        Ok(child) => {
-                            log::trace!("Child spawned PID: {}", child.id());
-                            current_child.replace(child);
-                            status = current_child.wait();
-                            status.success()
-                        }
-                    });
-
-                    if status.success() {
-                        log::info!("Command succeeded.");
-                        tx.send(Event::CommandSucceeded(build_id))
-                            .expect("can send");
-                    } else if let Some(code) = status.code() {
-                        log::error!("Command failed (exit code: {code})");
-                    } else {
-                        log::error!("Command failed.");
-                    }
-                });
+                exec.spawn(list.clone());
             }
 
             // Drain all events that arrive within the debounce window.  Each
             // new event resets the timer; we only (re)build once things have
             // been quiet for `debounce`.
             loop {
+                // Poll for build completion between debounce waits.
+                if let Some(succeeded) = exec.take_result() {
+                    if succeeded {
+                        log::trace!("Command succeeded, releasing lock");
+                        lock_guard.take();
+                    }
+                }
+
                 match rx.recv_timeout(self.debounce) {
-                    Ok(Event::ChangeDetected { git }) => {
+                    Ok(WatchEvent::ChangeDetected { git }) => {
                         if git {
                             log::trace!("Git directory change detected, resetting debounce timer");
                         } else {
@@ -369,25 +355,22 @@ impl Watch {
                             has_file_changes = true;
                         }
                         if !pending_build {
-                            current_child.terminate();
-                            generation += 1;
+                            exec.cancel();
                             if lock_guard.is_none() {
                                 lock_guard = Some(self.watch_lock.write());
                             }
                             pending_build = true;
                         }
                     }
-                    Ok(Event::CommandSucceeded(build_id)) if build_id == generation => {
-                        log::trace!("Command succeeded, releasing lock");
-                        lock_guard.take();
-                        // Continue waiting for the next change.
-                    }
-                    Ok(Event::CommandSucceeded(build_id)) => {
-                        log::trace!(
-                            "Ignoring stale success from build {build_id} (current: {generation})"
-                        );
-                    }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // Poll for build completion that finished during the wait.
+                        if let Some(succeeded) = exec.take_result() {
+                            if succeeded {
+                                log::trace!("Command succeeded, releasing lock");
+                                lock_guard.take();
+                            }
+                        }
+
                         // Quiet for `debounce` — time to build if there is a
                         // pending change.
                         if pending_build {
@@ -418,7 +401,7 @@ impl Watch {
                         }
                     }
                     Err(mpsc::RecvTimeoutError::Disconnected) => {
-                        current_child.terminate();
+                        exec.cancel();
                         return Ok(());
                     }
                 }
@@ -559,7 +542,7 @@ impl Watch {
 
 struct WatchEventHandler {
     watch: Watch,
-    tx: mpsc::Sender<Event>,
+    tx: mpsc::Sender<WatchEvent>,
     git_dirs: Vec<PathBuf>,
 }
 
@@ -584,14 +567,14 @@ impl notify::EventHandler for WatchEventHandler {
                     {
                         log::trace!("Git directory change detected in {event:?}");
                         self.tx
-                            .send(Event::ChangeDetected { git: true })
+                            .send(WatchEvent::ChangeDetected { git: true })
                             .expect("can send");
                         return;
                     }
 
                     log::trace!("Changes detected in {event:?}");
                     self.tx
-                        .send(Event::ChangeDetected { git: false })
+                        .send(WatchEvent::ChangeDetected { git: false })
                         .expect("can send");
                 } else {
                     log::trace!("Ignoring non-create/modify event: {event:?}");
@@ -680,6 +663,77 @@ impl SharedChild {
             }
         } else {
             log::trace!("nothing to terminate");
+        }
+    }
+}
+
+/// Encapsulates a build running on a background thread.
+///
+/// Tracks the child process, generation counter, and [`JoinHandle`] so the
+/// main loop can poll for completion without a dedicated channel.
+struct Executor {
+    child: SharedChild,
+    build_handle: Option<thread::JoinHandle<bool>>,
+    generation: u64,
+}
+
+impl Executor {
+    fn new() -> Self {
+        Self {
+            child: SharedChild::new(),
+            build_handle: None,
+            generation: 0,
+        }
+    }
+
+    /// Spawn a build on a background thread.
+    fn spawn(&mut self, mut commands: CommandList) {
+        let mut child = self.child.clone();
+
+        self.build_handle = Some(thread::spawn(move || {
+            let mut status = ExitStatus::default();
+
+            commands.spawn(|res| match res {
+                Err(err) => {
+                    log::error!("Could not execute command: {err}");
+                    false
+                }
+                Ok(process) => {
+                    log::trace!("Child spawned PID: {}", process.id());
+                    child.replace(process);
+                    status = child.wait();
+                    status.success()
+                }
+            });
+
+            if status.success() {
+                log::info!("Command succeeded.");
+            } else if let Some(code) = status.code() {
+                log::error!("Command failed (exit code: {code})");
+            } else {
+                log::error!("Command failed.");
+            }
+
+            status.success()
+        }));
+    }
+
+    /// Terminate the current build (if any) and bump the generation so
+    /// the next [`spawn`](Self::spawn) starts fresh.
+    fn cancel(&mut self) {
+        self.child.terminate();
+        self.generation += 1;
+        self.build_handle.take();
+    }
+
+    /// If the current build has finished, return `Some(success)`,
+    /// otherwise return `None`.
+    fn take_result(&mut self) -> Option<bool> {
+        let handle = self.build_handle.as_ref()?;
+        if handle.is_finished() {
+            Some(self.build_handle.take().unwrap().join().unwrap_or(false))
+        } else {
+            None
         }
     }
 }
@@ -800,8 +854,7 @@ impl WatchLock {
 }
 
 #[derive(Debug)]
-enum Event {
-    CommandSucceeded(u64),
+enum WatchEvent {
     ChangeDetected { git: bool },
 }
 
