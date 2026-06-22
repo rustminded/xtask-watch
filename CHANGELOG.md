@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `Watch::run` now uses only the commands from `--exec` or `--shell`
+  when provided, ignoring the `commands` argument entirely. Previously, both the
+  `commands` argument and CLI flags were combined into a single command list. (#37)
+
+### Added
+
+- `FromIterator<Command>` for `CommandList`. (#37)
+
 ## [0.3.5] - 2026-06-02
 
 ### Changed
