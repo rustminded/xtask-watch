@@ -560,16 +560,16 @@ impl notify::EventHandler for WatchEventHandler {
                             Ok(hash) if Some(hash.as_str()) != self.current_commit.as_deref() => {
                                 log::trace!("HEAD changed: {:?} -> {hash}", self.current_commit);
                                 self.current_commit = Some(hash);
-                                self.tx.send(Event::ChangeDetected).expect("can send");
                             }
                             Ok(_) => {
                                 log::trace!("HEAD unchanged, ignoring event");
+                                return;
                             }
                             Err(err) => {
                                 log::error!("failed to read git HEAD: {err}");
+                                return;
                             }
                         }
-                        return;
                     }
 
                     log::trace!("Changes detected in {event:?}");
