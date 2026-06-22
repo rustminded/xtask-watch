@@ -9,19 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `--commit` flag to also restart the command when git HEAD changes. (#36)
-
-### Changed
-
-- Commit-change detection now considers only valid event paths (existing, non-excluded,
-  non-hidden, non-backup files), ignoring stale or deleted paths that could previously
-  cause a `ChangeDetected` event to be emitted instead. (#36)
+- `--commit` flag to restart the command when git HEAD changes. (#36)
 
 ### Fixed
 
-- When `--commit` is used alongside a watch path that is a parent of `.git`,
-  git directory changes were incorrectly filtered out by the hidden-path check.
-  `is_hidden_path` now allows paths under explicitly-watched hidden directories. (#36)
+- `is_hidden_path` no longer filters out paths under explicitly-watched hidden
+  directories, fixing an issue where `--commit` could not detect git changes when
+  the watch path was a parent of `.git`. (#36)
+
+- Commit-change detection now ignores stale or deleted paths that could previously
+  trigger a spurious `ChangeDetected` event. (#36)
 
 ## [0.3.5] - 2026-06-02
 
