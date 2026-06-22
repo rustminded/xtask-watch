@@ -371,23 +371,13 @@ impl Watch {
             // been quiet for `debounce`.
             loop {
                 match rx.recv_timeout(self.debounce) {
-                    Ok(Event::ChangeDetected) => {
-                        log::trace!("Change detected, resetting debounce timer");
-                        has_file_changes = true;
-                        if !pending_build {
-                            // Cancel any in-progress build immediately so we
-                            // build the latest version, not an intermediate one.
-                            current_child.terminate();
-                            generation += 1;
-                            if lock_guard.is_none() {
-                                lock_guard = Some(self.watch_lock.write());
-                            }
-                            pending_build = true;
+                    Ok(Event::ChangeDetected { git }) => {
+                        if git {
+                            log::trace!("Git directory change detected, resetting debounce timer");
+                        } else {
+                            log::trace!("Change detected, resetting debounce timer");
+                            has_file_changes = true;
                         }
-                        // Loop back to reset the recv_timeout.
-                    }
-                    Ok(Event::GitDirChangeDetected) => {
-                        log::trace!("Git directory change detected, resetting debounce timer");
                         if !pending_build {
                             current_child.terminate();
                             generation += 1;
@@ -601,12 +591,16 @@ impl notify::EventHandler for WatchEventHandler {
                         && valid_paths.all(|p| self.git_dirs.iter().any(|g| p.starts_with(g)))
                     {
                         log::trace!("Git directory change detected in {event:?}");
-                        self.tx.send(Event::GitDirChangeDetected).expect("can send");
+                        self.tx
+                            .send(Event::ChangeDetected { git: true })
+                            .expect("can send");
                         return;
                     }
 
                     log::trace!("Changes detected in {event:?}");
-                    self.tx.send(Event::ChangeDetected).expect("can send");
+                    self.tx
+                        .send(Event::ChangeDetected { git: false })
+                        .expect("can send");
                 } else {
                     log::trace!("Ignoring non-create/modify event: {event:?}");
                 }
@@ -808,8 +802,7 @@ impl WatchLock {
 #[derive(Debug)]
 enum Event {
     CommandSucceeded(u64),
-    ChangeDetected,
-    GitDirChangeDetected,
+    ChangeDetected { git: bool },
 }
 
 #[cfg(test)]
