@@ -355,14 +355,6 @@ impl Watch {
                         }
                     }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
-                        // Poll for build completion that finished during the wait.
-                        if let Some(succeeded) = exec.take_result() {
-                            if succeeded {
-                                log::trace!("Command succeeded, releasing lock");
-                                lock_guard.take();
-                            }
-                        }
-
                         // Quiet for `debounce` — time to build if there is a
                         // pending change.
                         if pending_build {
@@ -661,7 +653,7 @@ impl SharedChild {
 
 /// Encapsulates a build running on a background thread.
 ///
-/// Tracks the child process, generation counter, and [`JoinHandle`] so the
+/// Tracks the child process and [`JoinHandle`] so the
 /// main loop can poll for completion without a dedicated channel.
 struct Executor {
     child: SharedChild,
