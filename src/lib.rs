@@ -304,9 +304,7 @@ impl Watch {
             }
         }
 
-        let mut exec = Executor::new(Arc::new(move || {
-            let _ = tx.send(WatchEvent::BuildFinished);
-        }));
+        let mut exec = Executor::new(tx.clone());
         let mut lock_guard = Some(self.watch_lock.write());
 
         // `pending_build` tracks whether a change has arrived that has not yet
@@ -668,22 +666,22 @@ impl SharedChild {
 struct Executor {
     child: SharedChild,
     build_handle: Option<thread::JoinHandle<bool>>,
-    notify: Arc<dyn Fn() + Send + Sync>,
+    tx: mpsc::Sender<WatchEvent>,
 }
 
 impl Executor {
-    fn new(notify: Arc<dyn Fn() + Send + Sync>) -> Self {
+    fn new(tx: mpsc::Sender<WatchEvent>) -> Self {
         Self {
             child: SharedChild::new(),
             build_handle: None,
-            notify,
+            tx,
         }
     }
 
     /// Spawn a build on a background thread.
     fn spawn(&mut self, mut commands: CommandList) {
         let mut child = self.child.clone();
-        let notify = self.notify.clone();
+        let tx = self.tx.clone();
 
         self.build_handle = Some(thread::spawn(move || {
             let mut status = ExitStatus::default();
@@ -709,7 +707,7 @@ impl Executor {
                 log::error!("Command failed.");
             }
 
-            notify();
+            let _ = tx.send(WatchEvent::BuildFinished);
             status.success()
         }));
     }
