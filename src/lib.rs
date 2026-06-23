@@ -323,7 +323,7 @@ impl Watch {
                 pending_build = false;
                 has_file_changes = false;
                 log::info!("Running command");
-                exec.spawn(list.clone());
+                exec.spawn(list.clone(), tx.clone());
             }
 
             // Drain all events that arrive within the debounce window.  Each
@@ -344,6 +344,14 @@ impl Watch {
                                 lock_guard = Some(self.watch_lock.write());
                             }
                             pending_build = true;
+                        }
+                    }
+                    Ok(WatchEvent::BuildFinished) => {
+                        if let Some(succeeded) = exec.take_result() {
+                            if succeeded {
+                                log::trace!("Command succeeded, releasing lock");
+                                lock_guard.take();
+                            }
                         }
                     }
                     Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -658,7 +666,6 @@ impl SharedChild {
 struct Executor {
     child: SharedChild,
     build_handle: Option<thread::JoinHandle<bool>>,
-    generation: u64,
 }
 
 impl Executor {
@@ -666,12 +673,11 @@ impl Executor {
         Self {
             child: SharedChild::new(),
             build_handle: None,
-            generation: 0,
         }
     }
 
     /// Spawn a build on a background thread.
-    fn spawn(&mut self, mut commands: CommandList) {
+    fn spawn(&mut self, mut commands: CommandList, tx: mpsc::Sender<WatchEvent>) {
         let mut child = self.child.clone();
 
         self.build_handle = Some(thread::spawn(move || {
@@ -698,15 +704,14 @@ impl Executor {
                 log::error!("Command failed.");
             }
 
+            let _ = tx.send(WatchEvent::BuildFinished);
             status.success()
         }));
     }
 
-    /// Terminate the current build (if any) and bump the generation so
-    /// the next [`spawn`](Self::spawn) starts fresh.
+    /// Terminate the current build (if any).
     fn cancel(&mut self) {
         self.child.terminate();
-        self.generation += 1;
         self.build_handle.take();
     }
 
@@ -840,6 +845,7 @@ impl WatchLock {
 #[derive(Debug)]
 enum WatchEvent {
     ChangeDetected { git: bool },
+    BuildFinished,
 }
 
 #[cfg(test)]
