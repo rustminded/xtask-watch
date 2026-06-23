@@ -304,7 +304,7 @@ impl Watch {
             }
         }
 
-        let mut exec = Executor::new();
+        let mut exec = Executor::new(tx.clone());
         let mut lock_guard = Some(self.watch_lock.write());
 
         // `pending_build` tracks whether a change has arrived that has not yet
@@ -323,7 +323,7 @@ impl Watch {
                 pending_build = false;
                 has_file_changes = false;
                 log::info!("Running command");
-                exec.spawn(list.clone(), tx.clone());
+                exec.spawn(list.clone());
             }
 
             // Drain all events that arrive within the debounce window.  Each
@@ -666,19 +666,22 @@ impl SharedChild {
 struct Executor {
     child: SharedChild,
     build_handle: Option<thread::JoinHandle<bool>>,
+    tx: mpsc::Sender<WatchEvent>,
 }
 
 impl Executor {
-    fn new() -> Self {
+    fn new(tx: mpsc::Sender<WatchEvent>) -> Self {
         Self {
             child: SharedChild::new(),
             build_handle: None,
+            tx,
         }
     }
 
     /// Spawn a build on a background thread.
-    fn spawn(&mut self, mut commands: CommandList, tx: mpsc::Sender<WatchEvent>) {
+    fn spawn(&mut self, mut commands: CommandList) {
         let mut child = self.child.clone();
+        let tx = self.tx.clone();
 
         self.build_handle = Some(thread::spawn(move || {
             let mut status = ExitStatus::default();
